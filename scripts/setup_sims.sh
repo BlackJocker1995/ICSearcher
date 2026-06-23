@@ -130,7 +130,7 @@ install_ardupilot() {
     # MAVProxy installed there. uv run handles the interpreter + PYTHONPATH.
     ( cd "$ARDUPILOT_DIR" && \
       uv run --project "$REPO_ROOT" python "Tools/autotest/sim_vehicle.py" \
-          -v ArduCopter -w --no-mission -j"$NJOBS" )
+          -v ArduCopter -w -j"$NJOBS" )
 
     ok "ArduPilot SITL ready: $ARDUPILOT_DIR/Tools/autotest/sim_vehicle.py"
 }
