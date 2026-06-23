@@ -5,7 +5,7 @@
 # mode-derived constants (STATUS_ORDER, PARAM, PARAM_PART, paths) are
 # computed from it. Override per-run via the ICSEARCHER_MODE env var
 # (config is frozen at load time — there is no runtime select_mode).
-mode: PX4
+mode: Ardupilot
 
 # Simulation Settings
 simulation:

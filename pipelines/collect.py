@@ -21,6 +21,8 @@ def _count_logs():
     """Number of collected logs so far, per firmware."""
     if toolConfig.MODE == "PX4":
         log_path = toolConfig.PX4_LOG_PATH
+        if not os.path.isdir(log_path):
+            return 0
         return len([n for n in os.listdir(log_path) if n.endswith(".ulg")])
     # ArduPilot tracks the next index in logs/LASTLOG.TXT.
     log_index = f"{toolConfig.ARDUPILOT_LOG_PATH}/logs/LASTLOG.TXT"

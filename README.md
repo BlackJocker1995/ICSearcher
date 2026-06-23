@@ -177,23 +177,6 @@ ICSearcher/
 └── ...
 ```
 
-The script:
-
-1. **Checks** that the system build tools from the Prerequisites section are
-   present (it does not install them — and uses no `sudo` itself).
-2. **ArduPilot** — clones `github.com/ardupilot/ardupilot` at a stable
-   `Copter-*` tag, runs its `install-prereqs-ubuntu.sh`, and builds the
-   ArduCopter SITL once via `uv run python sim_vehicle.py` (so the firmware's
-   Python tools — `pexpect`, `MAVProxy`, `dronekit-sitl` — come from the project
-   venv installed by `uv sync --group ardupilot`, not a system pip).
-3. **PX4** — clones `github.com/PX4/PX4-Autopilot` at a stable release, runs
-   its `ubuntu.sh`, builds `px4_sitl jmavsim`, and writes the
-   `sitl_multiple_run_single.sh` launcher that multi-instance validation uses.
-4. **Creates the log storage dir** (`sims/data/logs/`, with the ArduPilot
-   `LASTLOG.TXT` index seeded) so the collect stage works on the first run.
-5. **Rewrites `data/config.yaml`** so `paths:` points at `sims/ardupilot`,
-   `sims/PX4-Autopilot`, and `sims/data` — no manual editing needed.
-
 Run it as your **normal user** (the same one that ran the Prerequisites
 `sudo apt-get`). The script itself does not use `sudo` — but the firmware
 repos' own setup scripts (ArduPilot's `install-prereqs-ubuntu.sh` and PX4's
