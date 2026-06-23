@@ -78,8 +78,9 @@ pyproject.toml            Poetry project manifest (all dependencies declared her
 - **OS:** Ubuntu 20.04 or 22.04 (recommended). The simulators and their build
   toolchains are Linux-centric.
 - **Python:** 3.9 – 3.12.
-- **GPU:** optional but recommended for training (a CUDA 12.1 PyTorch wheel is
-  configured by default). CPU-only works too.
+- **GPU:** optional but recommended for training. The project supports both a
+  **CPU** and a **CUDA 12.1** PyTorch build — you pick one at install time
+  (see Step 1).
 - **Simulators:** ArduPilot SITL and/or PX4-Autopilot with JMavSim. The
   bootstrap script builds them for you (see Step 2).
 
@@ -96,21 +97,43 @@ All Python dependencies are declared in `pyproject.toml` and managed by
 # 1a. Install Poetry (if you don't already have it)
 curl -sSL https://install.python-poetry.org | python3 -
 
-# 1b. From the repository root, lock and install everything
+# 1b. From the repository root, lock the dependency tree
 cd ICSearcher
 poetry lock        # resolves the full dependency tree -> poetry.lock
-poetry install     # creates a venv and installs all packages
+
+# 1c. Install the project + a PyTorch backend (pick ONE — see below)
+poetry install --with cpu    # CPU build, or
+poetry install --with cuda   # CUDA 12.1 build
 ```
 
 This installs the scientific stack (numpy, pandas, scipy, scikit-learn), the
-drone-comms stack (pymavlink, pyulog, pexpect), the surrogate backend
-(**PyTorch with CUDA 12.1**), the GA engine (pymoo), and dev tools (pytest).
+drone-comms stack (pymavlink, pyulog, pexpect), the GA engine (pymoo), and dev
+tools (pytest). **PyTorch is not pulled in by a bare `poetry install`** — you
+choose one backend explicitly:
 
-> **CUDA note.** `pyproject.toml` pins PyTorch to the `cu121` wheel index via an
-> explicit `[[tool.poetry.source]]`. If your NVIDIA driver targets a different
-> CUDA toolkit, edit that block's URL suffix (`cu118` / `cu124`). For a CPU-only
-> machine, remove the `pytorch-cu121` source and the `source = "pytorch-cu121"`
-> line on the `torch` dependency to fall back to the PyPI CPU wheel.
+```bash
+# Option A — CPU build (no GPU required)
+poetry install --with cpu
+
+# Option B — CUDA 12.1 build (NVIDIA GPU required)
+poetry install --with cuda
+```
+
+The two groups are mutually exclusive — install exactly one. The surrogate model
+auto-selects the device at runtime (CUDA when available, otherwise CPU), so the
+rest of the pipeline is identical for both.
+
+> **Different CUDA toolkit?** `pyproject.toml` pins the CUDA index to `cu121` via
+> an explicit `[[tool.poetry.source]]`. For a different toolkit, edit that URL's
+> suffix (`cu118` / `cu124`).
+>
+> **CUDA install trouble?** A known Poetry limitation
+> ([python-poetry/poetry#10086](https://github.com/python-poetry/poetry/issues/10086))
+> can block the CUDA wheel. Fall back to:
+> ```bash
+> poetry install --with cpu
+> poetry run pip install torch --index-url https://download.pytorch.org/whl/cu121
+> ```
 
 > **Optional TCN backend.** A TCN surrogate (`CyTCN`) is available but no longer
 > needs an external package — it ships as a built-in `Conv1d` head in

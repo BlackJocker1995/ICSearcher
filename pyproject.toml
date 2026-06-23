@@ -14,8 +14,9 @@ packages = [
     { include = "icsearcher" },
 ]
 
-# PyTorch CUDA index. CUDA 12.1 wheels. Change the url suffix (cu118/cu124) if
-# your driver requires a different CUDA toolkit version.
+# PyTorch CUDA 12.1 index. Used ONLY by the optional `cuda` group below so that
+# the default install pulls the CPU wheel from PyPI. Change the url suffix
+# (cu118 / cu124) if your driver requires a different CUDA toolkit version.
 [[tool.poetry.source]]
 name = "pytorch-cu121"
 url = "https://download.pytorch.org/whl/cu121"
@@ -41,15 +42,52 @@ pexpect = ">=4.8"
 # geatpy (the legacy engine) was removed in stage 3.
 pymoo = ">=0.6"
 
-# Surrogate model backend. Stage 4 migrated from Keras/TensorFlow to PyTorch
-# (CUDA 12.1 wheels via the explicit pytorch-cu121 source). The legacy
-# tensorflow/keras/keras-tcn and ray dependencies were removed.
-torch = { version = ">=2.1", source = "pytorch-cu121" }
+# Surrogate model backend. Stage 4 migrated from Keras/TensorFlow to PyTorch.
+# The legacy tensorflow/keras/keras-tcn and ray dependencies were removed.
+# PyTorch itself is declared in the mutually-exclusive `cpu`/`cuda` groups below
+# so a single install picks exactly one build:
+#   poetry install              -> CPU torch (default)
+#   poetry install --with cuda  -> CUDA 12.1 torch
+# See "Surrogate model backend" in the groups section.
 
 # Config / logging / utils
 pyyaml = ">=6.0"
 loguru = ">=0.7"
 tqdm = ">=4.65"
+
+# ---------------------------------------------------------------------------
+# PyTorch backend — pick exactly ONE group at install time.
+#
+#   poetry install --with cpu    # CPU build (PyPI; no GPU required)
+#   poetry install --with cuda   # CUDA 12.1 build (NVIDIA GPU required)
+#
+# Both groups are optional by design so a single install resolves exactly one
+# `torch`. The model auto-selects the device at runtime (CUDA when available,
+# else CPU), so application code is identical for both builds.
+#
+# Notes:
+#  - The groups are mutually exclusive; do NOT install both
+#    (`poetry install --with cpu --with cuda` conflicts on `torch`).
+#  - For a different CUDA toolkit, edit the pytorch-cu121 source URL suffix
+#    above (cu118 / cu124) and update the version below if needed.
+#  - If `poetry install --with cuda` ever fails to pull the CUDA wheel (a known
+#    Poetry limitation, see python-poetry/poetry#10086), fall back to:
+#        poetry install --with cpu
+#        poetry run pip install torch --index-url https://download.pytorch.org/whl/cu121
+# ---------------------------------------------------------------------------
+[tool.poetry.group.cpu]
+optional = true
+
+[tool.poetry.group.cpu.dependencies]
+# CPU-only PyTorch wheel. PyPI serves the +cpu local version automatically on
+# non-CUDA hosts.
+torch = ">=2.1"
+
+[tool.poetry.group.cuda]
+optional = true
+
+[tool.poetry.group.cuda.dependencies]
+torch = { version = ">=2.1", source = "pytorch-cu121" }
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=7.4"
