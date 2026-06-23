@@ -122,12 +122,13 @@ install_ardupilot() {
     # removed `'rU'` file mode. Provide a lightweight imp.py shim and fix the
     # text mode. Both changes are idempotent.
     info "Patching waf for Python 3.12 compatibility..."
-    local waf_dir="$ARDUPILOT_DIR/modules/waf/waflib"
+    local waf_parent="$ARDUPILOT_DIR/modules/waf"
+    local waf_dir="$waf_parent/waflib"
     if [[ -f "$waf_dir/Context.py" ]]; then
-        # Create an imp.py shim that maps the three symbols waf uses to
-        # their importlib equivalents. This is simpler than patching every
-        # `import imp` site across the waf source tree.
-        cat > "$waf_dir/imp.py" << 'IMPSHIM'
+        # Create an imp.py shim in modules/waf/ (NOT waflib/ — waf adds its
+        # own parent dir to sys.path, so `import imp` from any waflib module
+        # finds it here).
+        cat > "$waf_parent/imp.py" << 'IMPSHIM'
 import importlib.util
 import types
 
