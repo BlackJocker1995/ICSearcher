@@ -117,6 +117,40 @@ install_ardupilot() {
     git -C "$ARDUPILOT_DIR" checkout "$ARDUPILOT_BRANCH"
     git -C "$ARDUPILOT_DIR" submodule update --init --recursive
 
+    # Patch ArduPilot's bundled waf build system for Python 3.12+.
+    # The bundled waf (modules/waf) still uses the removed `imp` module and the
+    # removed `'rU'` file mode. Provide a lightweight imp.py shim and fix the
+    # text mode. Both changes are idempotent.
+    info "Patching waf for Python 3.12 compatibility..."
+    local waf_dir="$ARDUPILOT_DIR/modules/waf/waflib"
+    if [[ -f "$waf_dir/Context.py" ]]; then
+        # Create an imp.py shim that maps the three symbols waf uses to
+        # their importlib equivalents. This is simpler than patching every
+        # `import imp` site across the waf source tree.
+        cat > "$waf_dir/imp.py" << 'IMPSHIM'
+import importlib.util
+import types
+
+def get_suffixes():
+    return importlib.util.EXTENSION_SUFFIXES
+
+def new_module(name):
+    return types.ModuleType(name)
+
+def load_source(name, pathname, file=None):
+    spec = importlib.util.spec_from_file_location(name, pathname)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+# waf 2.x also calls imp.load_source with positional args; keep the signature.
+load_module = load_source
+IMPSHIM
+        # Fix the deprecated 'rU' text mode (removed in Python 3.11).
+        sed -i 's/m=.rU./m="r"/g' "$waf_dir/Context.py" "$waf_dir/ConfigSet.py"
+        ok "waf patched for Python 3.12"
+    fi
+
     info "Running ArduPilot's own prerequisite installer (toolchain, etc.)"
     info "(install-prereqs-ubuntu.sh uses sudo internally and will prompt for your password)"
     if [[ -f "$ARDUPILOT_DIR/Tools/environment_install/install-prereqs-ubuntu.sh" ]]; then
