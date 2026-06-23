@@ -25,6 +25,22 @@ import yaml
 # Absolute path to the repo root. Every relative path in the project is
 # resolved against this so the pipeline no longer depends on the CWD.
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# If the file-based resolution doesn't point at the project root (e.g. under
+# some editable-install configurations where __file__ resolves to a synthetic
+# path), fall back to the working directory. Both methods are validated by
+# checking for a known marker (the icsearcher/config.py itself).
+if not (REPO_ROOT / "icsearcher" / "config.py").is_file():
+    cwd = Path.cwd()
+    if (cwd / "icsearcher" / "config.py").is_file():
+        REPO_ROOT = cwd
+    else:
+        raise RuntimeError(
+            f"Cannot locate project root: {REPO_ROOT} (from __file__) "
+            f"and {cwd} (from CWD) neither contains icsearcher/config.py. "
+            "Run from the project directory."
+        )
+
 DATA_DIR = REPO_ROOT / "data"
 
 VALID_MODES = ("Ardupilot", "PX4")
@@ -197,7 +213,7 @@ class ToolConfig:
             cur = self.__dict__.get(key)
             if cur and os.path.exists(cur):
                 return  # already valid
-            candidate = sims / sims_rel
+            candidate = (sims / sims_rel).resolve()
             if candidate.exists():
                 self.__dict__[key] = str(candidate)
                 print(f"  auto-detected {key} = {candidate}")

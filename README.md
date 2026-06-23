@@ -222,6 +222,8 @@ See [Configuration reference](#configuration-reference) for every field.
 
 ### Step 4 — Run the pipeline
 
+**Before running, make sure you've built the simulators first** (Step 2, `./scripts/setup_sims.sh`), otherwise the pipeline will fail to launch SITL.
+
 Run the stages in order. Each stage is a console command — no `python` or path
 needed (the `icsearcher-*` entry points are installed by `uv sync`):
 
