@@ -1,128 +1,289 @@
-# ICSearcher and LGDFuzzer
-This is an approach source code of ICSearcher.
+# ICSearcher
 
-The original code of the [paper(LGDFuzzer)](https://dl.acm.org/doi/10.1145/3510003.3510084) is in branch [lgdfuzzer](https://github.com/BlackJocker1995/uavga/tree/lgdfuzzer)
+Surrogate-guided fuzzing for UAV autopilot controller parameters. ICSearcher
+trains an LSTM surrogate that predicts flight-status deviation, uses a genetic
+algorithm to search the controller-parameter space for configurations likely to
+destabilize the drone, validates the candidates in a real SITL simulator, and
+finally derives safe parameter ranges. It supports both **ArduPilot** and
+**PX4** firmware.
 
-ICSearcher is an improved version of LGDFuzzer.
+ICSearcher is an improved version of
+[LGDFuzzer](https://dl.acm.org/doi/10.1145/3510003.3510084) (ICSE 2022). The
+original LGDFuzzer source lives in the
+[`lgdfuzzer`](https://github.com/BlackJoker1995/uavga/tree/lgdfuzzer) branch.
 
-# Log
-- Update: 22-07-15, support px4
-- Stage-1 refactor: Poetry dependency management, unified loguru logging,
-  crash-on-import fixes, config driven by `data/config.yaml`, upstream simulator
-  setup script.
-- Stage-2 refactor: packages renamed to `icsearcher/`, the `_px4` script twins
-  merged into 6 unified `pipelines/` scripts, `toolConfig` frozen at load time
-  (mode from yaml / `ICSEARCHER_MODE` env var; no runtime `select_mode`).
-- Stage-3 refactor: GA engine migrated from geatpy to pymoo (differential
-  evolution for fuzzing, NSGA-II for range derivation, built-in GD/IGD/HV/Spacing
-  indicators). geatpy removed.
-- Stage-4 refactor: surrogate model migrated from Keras/TensorFlow to PyTorch
-  (CUDA); the parallel log converter moved from Ray to stdlib
-  `concurrent.futures`. tensorflow/keras/keras-tcn/ray removed. Model artifact
-  changed from `lstm.h5` to `lstm.pt` — retrain via `2_train.py train`.
+---
 
-## Requirement
-OS: Ubuntu 20.04 / 22.04 (recommend). Python >= 3.9.
+## Table of contents
 
-Dependencies are managed with [Poetry](https://python-poetry.org/) and declared
-in `pyproject.toml` (pinned in `poetry.lock`). Install everything (including a
-CUDA build of PyTorch) with:
+1. [How it works](#how-it-works)
+2. [Repository layout](#repository-layout)
+3. [Requirements](#requirements)
+4. [Deployment walkthrough](#deployment-walkthrough)
+   - [Step 1 — Install the Python environment](#step-1--install-the-python-environment)
+   - [Step 2 — Provision the simulators](#step-2--provision-the-simulators)
+   - [Step 3 — Configure the run](#step-3--configure-the-run)
+   - [Step 4 — Run the pipeline](#step-4--run-the-pipeline)
+5. [Configuration reference](#configuration-reference)
+6. [Testing](#testing)
+7. [Notes & troubleshooting](#notes--troubleshooting)
+
+---
+
+## How it works
+
+ICSearcher is a six-stage pipeline. Each stage is a standalone script in
+`pipelines/`; the firmware (ArduPilot / PX4) is selected once in
+`data/config.yaml` and every stage branches on it.
+
+```
+Stage 0  collect      Launch SITL repeatedly with random params, collect logs
+Stage 1  convert      Parse .BIN / .ulg flight logs into CSV feature rows
+Stage 2  train        Build supervised features, split, train the LSTM surrogate
+Stage 3  fuzz         GA search (differential evolution) guided by the surrogate
+Stage 4  validate     Select diverse candidates, validate each in real SITL
+Stage 5  range        Derive safe parameter ranges via NSGA-II
+```
+
+The surrogate model is a PyTorch LSTM; the GA engine is
+[pymoo](https://pymoo.org) (differential evolution for fuzzing, NSGA-II for
+range derivation, with built-in GD/IGD/HV/Spacing indicators).
+
+---
+
+## Repository layout
+
+```
+icsearcher/               Core package
+  config.py               Frozen toolConfig singleton (loaded from data/config.yaml)
+  logging_config.py       Unified loguru setup
+  params.py               Parameter loading / scaling / Location geometry
+  comms.py                MAVLink comms + log parsing (DroneMavlink, APM/PX4)
+  sim.py                  Simulator lifecycle (SimManager / GaSimManager)
+  anomaly.py              In-flight anomaly detector (decomposed from the monitor)
+  model.py                LSTM / TCN surrogate model (PyTorch)
+  search/                 GA fuzzing engine (problem, searcher, fuzzer, io)
+  range/                  NSGA-II range derivation (problem, searcher)
+data/                     config.yaml, param_*.json, mission*.txt, fitCollection*.txt
+pipelines/                The six stage entry points (0_collect .. 5_range)
+scripts/setup_sims.sh     Bootstrap: clone & build ArduPilot SITL and PX4 + JMavSim
+tests/                    Pure-function unit tests (no SITL required)
+pyproject.toml            Poetry project manifest (all dependencies declared here)
+```
+
+---
+
+## Requirements
+
+- **OS:** Ubuntu 20.04 or 22.04 (recommended). The simulators and their build
+  toolchains are Linux-centric.
+- **Python:** 3.9 – 3.12.
+- **GPU:** optional but recommended for training (a CUDA 12.1 PyTorch wheel is
+  configured by default). CPU-only works too.
+- **Simulators:** ArduPilot SITL and/or PX4-Autopilot with JMavSim. The
+  bootstrap script builds them for you (see Step 2).
+
+---
+
+## Deployment walkthrough
+
+### Step 1 — Install the Python environment
+
+All Python dependencies are declared in `pyproject.toml` and managed by
+[Poetry](https://python-poetry.org).
 
 ```bash
-poetry install
+# 1a. Install Poetry (if you don't already have it)
+curl -sSL https://install.python-poetry.org | python3 -
+
+# 1b. From the repository root, lock and install everything
+cd ICSearcher
+poetry lock        # resolves the full dependency tree -> poetry.lock
+poetry install     # creates a venv and installs all packages
 ```
 
-> CUDA: `pyproject.toml` pins PyTorch to the `cu121` wheel index. If your driver
-> needs a different CUDA toolkit, edit the `[[tool.poetry.source]]` block
-> (`cu118` / `cu124`).
+This installs the scientific stack (numpy, pandas, scipy, scikit-learn), the
+drone-comms stack (pymavlink, pyulog, pexpect), the surrogate backend
+(**PyTorch with CUDA 12.1**), the GA engine (pymoo), and dev tools (pytest).
 
-Python packages used: numpy, pandas, scipy, scikit-learn, pymavlink, pyulog,
-pymoo (GA), torch (surrogate model, CUDA), loguru, pyyaml, tqdm.
+> **CUDA note.** `pyproject.toml` pins PyTorch to the `cu121` wheel index via an
+> explicit `[[tool.poetry.source]]`. If your NVIDIA driver targets a different
+> CUDA toolkit, edit that block's URL suffix (`cu118` / `cu124`). For a CPU-only
+> machine, remove the `pytorch-cu121` source and the `source = "pytorch-cu121"`
+> line on the `torch` dependency to fall back to the PyPI CPU wheel.
 
-## Upstream simulators
-Run the bootstrap script to clone & build ArduPilot SITL and PX4-Autopilot +
-JMavSim, install their build deps, and provision the PX4 multi-instance helper:
+> **Optional TCN backend.** A TCN surrogate (`CyTCN`) is available but no longer
+> needs an external package — it ships as a built-in `Conv1d` head in
+> `icsearcher/model.py`.
+
+### Step 2 — Provision the simulators
+
+`scripts/setup_sims.sh` clones and builds the upstream simulators, installs
+their system build dependencies, and provisions the PX4 multi-instance helper
+the project relies on.
 
 ```bash
-scripts/setup_sims.sh                 # both simulators, default paths
-scripts/setup_sims.sh --ardupilot     # only ArduPilot
-scripts/setup_sims.sh --px4           # only PX4
+# Build both simulators into the default locations
+# (~/ardupilot and ~/PX4-Autopilot — matching data/config.yaml)
+./scripts/setup_sims.sh
+
+# Or build only one
+./scripts/setup_sims.sh --ardupilot
+./scripts/setup_sims.sh --px4
 ```
 
-Override the install locations with env vars (defaults match `data/config.yaml`):
+Override the install locations with environment variables (absolute paths):
 
 ```bash
-ARDUPILOT_DIR=/opt/ardupilot PX4_DIR=/opt/PX4-Autopilot scripts/setup_sims.sh
+ARDUPILOT_DIR=/opt/ardupilot PX4_DIR=/opt/PX4-Autopilot ./scripts/setup_sims.sh
 ```
 
-GUI note: PX4 SITL is launched with `HEADLESS=1` (no JMavSim 3D window) so
-unattended fuzzing does not need a display — the anomaly detector reads flight
-telemetry over MAVLink. ArduPilot SITL never opens a GUI either. Remove
-`HEADLESS=1` in `icsearcher/sim.py:start_sitl` (PX4 branch) if you want the 3D
-view for debugging.
+What the script does, per simulator:
 
-## Package layout (stage 2)
+- **ArduPilot** — clones `ArduPilot/ardupilot` at a stable `Copter-*` tag,
+  refreshes submodules, runs `install-prereqs-ubuntu.sh`, installs
+  `pymavlink`/`MAVProxy`/`dronekit-sitl`, and builds the ArduCopter SITL once.
+- **PX4** — clones `PX4/PX4-Autopilot` at a stable release, runs `ubuntu.sh`,
+  builds `px4_sitl jmavsim`, and writes `Tools/sitl_multiple_run_single.sh`
+  (used by multi-instance validation).
+
+Run it once from a sudo-capable account; the first build is slow (it fetches a
+toolchain). After it finishes, the binaries remain and later pipeline runs are
+fast.
+
+### Step 3 — Configure the run
+
+All configuration lives in **`data/config.yaml`**. The most important field is
+`mode`, which selects the firmware and is **frozen at load time** (there is no
+runtime switching):
+
+```yaml
+mode: PX4          # or "Ardupilot"
 ```
-icsearcher/
-  config.py          frozen toolConfig singleton (loaded from data/config.yaml)
-  logging_config.py  unified loguru setup
-  params.py          parameter loading / scaling / Location geometry
-  comms.py           MAVLink comms + log parsing (DroneMavlink et al.)
-  sim.py             simulator lifecycle + anomaly detector
-  model.py           LSTM/TCN surrogate model
-  search/            GA fuzzing engine (problem / searcher / fuzzer / io)
-  range/             NSGA-II range derivation (problem / searcher)
-data/                config.yaml, param_*.json, mission*.txt, fitCollection*.txt
-pipelines/           6 unified stage scripts (0_collect .. 5_range)
-scripts/             setup_sims.sh
-tests/               pure-function unit tests
+
+Then point the `paths:` block at your simulator locations (the defaults match
+what `setup_sims.sh` produces):
+
+```yaml
+paths:
+  ardupilot_log: /media/rain/data                              # ArduPilot log dir
+  sitl: /home/rain/ardupilot/Tools/autotest/sim_vehicle.py     # ArduPilot SITL launcher
+  px4_run: /home/rain/PX4-Autopilot                            # PX4 source root
+  jmavsim: /home/rain/PX4-Autopilot/Tools/jmavsim_run.sh       # JMavSim launcher
 ```
 
-## Configuration
-All configuration lives in `data/config.yaml`. The `mode:` field (`PX4` or
-`Ardupilot`) is **authoritative and frozen at load time**: it is read once and
-all mode-derived constants (`STATUS_ORDER`, `PARAM`, `PARAM_PART`, paths) are
-computed from it. To run a stage in a different mode, either change `mode:` in
-`data/config.yaml` or set the `ICSEARCHER_MODE` env var before running — there
-is no runtime `select_mode` anymore. Point the `paths:` block at your simulator
-locations.
+> **Quick mode switch without editing the file:** set the `ICSEARCHER_MODE`
+> environment variable before running any stage:
+> ```bash
+> ICSEARCHER_MODE=Ardupilot poetry run python pipelines/0_collect.py
+> ```
+> Priority is: env var > `data/config.yaml`'s `mode` field.
 
-Key fields:
-* `mode` — `PX4` or `Ardupilot`.
-* `paths.{sitl,px4_run,jmavsim,ardupilot_log,...}` — simulator executables / log dirs.
-* `simulation.{speed,home,wind_range,window,altitude}` — sim parameters.
-* `param_files.{ardupilot,px4}` — parameter JSON files (default `data/param_*.json`).
+See [Configuration reference](#configuration-reference) for every field.
 
-`ARDUPILOT_LOG_PATH` must contain a flag file `logs/LASTLOG.TXT` (run one sim
-flight there first to auto-generate it). The PX4 log path is derived from
-`px4_run` automatically.
+### Step 4 — Run the pipeline
 
-## Pipeline (unified over ArduPilot / PX4)
-Each stage is one script; the firmware is chosen by `mode` in `data/config.yaml`.
+Run the stages in order. Replace `poetry run python` with `python` if you've
+activated the venv directly. The firmware is taken from `data/config.yaml`.
 
 ```bash
-python pipelines/0_collect.py
-python pipelines/1_convert.py
-python pipelines/2_train.py extract      # build features + fit scaler
-python pipelines/2_train.py split        # split features into train/test
-python pipelines/2_train.py raw_split    # carve held-out raw test segments
-python pipelines/2_train.py train        # train the LSTM
-python pipelines/3_fuzz.py               # surrogate-guided fuzzing
-python pipelines/4_validate.py pre       # cluster-select candidates
-python pipelines/4_validate.py validate            # validate in SITL
-python pipelines/4_validate.py validate --device 1 # a specific SITL instance
-python pipelines/5_range.py              # derive safe-range guidelines
+# Stage 0 — collect flight logs (launches SITL ~500 times)
+poetry run python pipelines/0_collect.py
+
+# Stage 1 — convert raw logs (.BIN / .ulg) to CSV
+poetry run python pipelines/1_convert.py
+
+# Stage 2 — feature engineering + training (run each sub-step in order)
+poetry run python pipelines/2_train.py extract      # build features + fit the scaler
+poetry run python pipelines/2_train.py split        # split features into train/test
+poetry run python pipelines/2_train.py raw_split    # carve held-out raw test segments
+poetry run python pipelines/2_train.py train        # train the LSTM surrogate
+
+# Stage 3 — surrogate-guided fuzzing
+poetry run python pipelines/3_fuzz.py
+
+# Stage 4 — select candidates, then validate each in real SITL
+poetry run python pipelines/4_validate.py pre                  # cluster-select candidates
+poetry run python pipelines/4_validate.py validate             # validate in SITL
+poetry run python pipelines/4_validate.py validate --device 1  # use a specific SITL instance
+
+# Stage 5 — derive safe parameter ranges via NSGA-II
+poetry run python pipelines/5_range.py
 ```
 
-## Tests
-Pure-function unit tests (no SITL required):
+**Outputs** (git-ignored):
+
+- `model/{MODE}/` — trained surrogate (`lstm.pt`), the fitted scaler
+  (`trans.pkl`), and feature CSVs.
+- `result/{MODE}/` — fuzzing populations (`pop{EXE}.pkl`), validated candidates
+  (`params{EXE}.csv`).
+
+---
+
+## Configuration reference
+
+`data/config.yaml` is the single source of configuration.
+
+| Field | Description |
+|-------|-------------|
+| `mode` | `PX4` or `Ardupilot`. Frozen at load time; override per-run with `ICSEARCHER_MODE`. |
+| `simulation.speed` | SITL simulation speed factor. |
+| `simulation.home` | ArduPilot `--location` / PX4 home region tag. |
+| `simulation.debug` | Verbose logging when true. |
+| `simulation.wind_range` | Wind speed range for sampling. |
+| `simulation.window.{width,height}` | Render resolution (AirSim only). |
+| `simulation.altitude.{limit_high,limit_low}` | Altitude bounds. |
+| `paths.ardupilot_log` | ArduPilot log directory. **Must contain** `logs/LASTLOG.TXT` (run one sim flight there first to auto-generate it). |
+| `paths.sitl` | Path to ArduPilot's `sim_vehicle.py`. |
+| `paths.px4_run` | PX4-Autopilot source root. The PX4 log path is derived from this automatically. |
+| `paths.jmavsim` | Path to PX4's `jmavsim_run.sh`. |
+| `paths.{airsim,morse}` | Optional alternate simulator launchers. |
+| `model.{input_len,output_len,segment_len,retrans}` | Surrogate model hyperparameters. |
+| `cluster_choice_num` | Candidates sampled per cluster during candidate selection. |
+| `param_files.{ardupilot,px4}` | Parameter-definition JSONs (default `data/param_*.json`). |
+| `missions.fit_collection.{ardupilot,px4}` | Mission files used for fitness collection. |
+
+---
+
+## Testing
+
+Pure-function unit tests that do **not** require a live SITL simulator:
 
 ```bash
 poetry run pytest
 ```
 
-## Logging
-All modules use [loguru](https://github.com/Delgan/loguru) via
-`icsearcher/logging_config.py`. `setup_logging(debug=...)` configures one unified
-stderr sink and bridges any remaining stdlib `logging` calls into it, so nothing
-is silenced.
+Coverage spans the config loader, parameter scaling, the pymoo problem shapes,
+the PyTorch model forward/train path, and the decomposed anomaly detector
+(geometry + classification + timeout). Tests requiring heavy backends (pymoo,
+torch, pymavlink) self-skip when the backend is absent, so the suite is always
+green in any environment.
+
+---
+
+## Notes & troubleshooting
+
+**No GUI needed for unattended fuzzing.** PX4 SITL launches with `HEADLESS=1`
+(no JMavSim 3D window); ArduPilot SITL never opens a GUI either. The anomaly
+detector reads flight telemetry over MAVLink, not the 3D view. To see the
+JMavSim window for debugging, remove `HEADLESS=1` from the PX4 branch of
+`icsearcher/sim.py:start_sitl`.
+
+**`poetry.lock` is not committed.** Generate it locally with `poetry lock`
+(the TensorFlow-free dependency graph resolves quickly). Commit it if you want
+reproducible installs across machines.
+
+**Retrain after upgrading past stage 4.** The surrogate artifact changed from
+`lstm.h5` (Keras) to `lstm.pt` (PyTorch state-dict). Old Keras models are not
+loadable — rerun `pipelines/2_train.py train`.
+
+**Multi-instance validation.** `pipelines/4_validate.py validate --device N`
+runs validation against SITL instance `N` (UDP port 14540+N). The legacy
+`gnome-terminal --tab` multi-tab launcher was removed (its `-e` syntax is
+rejected by modern gnome-terminal); run multiple `--device` instances yourself
+if you want parallel validation.
+
+**Logging.** Every module uses [loguru](https://github.com/Delgan/loguru)
+through `icsearcher/logging_config.py`. `setup_logging(debug=...)` configures
+one unified stderr sink and bridges any remaining stdlib `logging` calls into
+it, so nothing is silenced.
