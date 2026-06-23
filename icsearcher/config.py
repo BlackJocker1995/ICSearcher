@@ -77,8 +77,27 @@ class ToolConfig:
 
     # ------------------------------------------------------------------ loading
     def _load_yaml_config(self):
-        """Load YAML config with fallback to empty dict."""
+        """Load YAML config with fallback to empty dict.
+
+        Priority:
+          1. ``data/config.yaml`` (machine-specific, gitignored — generated
+             by ``setup_sims.sh`` or copied from the .example template).
+          2. ``data/config.yaml.example`` (committed template).
+          3. Empty dict (all defaults used).
+        """
         config_path = DATA_DIR / 'config.yaml'
+        example_path = DATA_DIR / 'config.yaml.example'
+
+        # If the machine-specific file doesn't exist yet, create it from the
+        # example template so the user gets a ready-to-edit copy.
+        if not config_path.exists() and example_path.exists():
+            try:
+                import shutil
+                shutil.copy2(example_path, config_path)
+                print(f"Created {config_path} from {example_path.name} — edit it if needed.")
+            except OSError as e:
+                print(f"Warning: could not copy {example_path} to {config_path}: {e}")
+
         try:
             with open(config_path, 'r') as f:
                 return yaml.safe_load(f) or {}

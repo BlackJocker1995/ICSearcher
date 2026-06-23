@@ -208,10 +208,20 @@ setup_data_dir() {
 }
 
 update_config() {
-    # Rewrite data/config.yaml's paths: block so the project points at what we
-    # just installed. Only the four path keys we own are touched.
+    # Generate data/config.yaml from the example template, then rewrite the
+    # paths: block to point at the just-installed locations.
     local cfg="$REPO_ROOT/data/config.yaml"
-    [[ -f "$cfg" ]] || { warn "$cfg not found; skipping config update."; return; }
+    local example="$REPO_ROOT/data/config.yaml.example"
+
+    if [[ ! -f "$cfg" ]]; then
+        if [[ -f "$example" ]]; then
+            cp "$example" "$cfg"
+            log "Step D — generating data/config.yaml from config.yaml.example"
+        else
+            warn "No config.yaml or example found; skipping config update."
+            return
+        fi
+    fi
 
     log "Step D — wiring data/config.yaml to the installed paths"
     python3 - "$cfg" "$ARDUPILOT_DIR" "$PX4_DIR" "$DATA_DIR" <<'PY'

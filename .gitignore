@@ -27,3 +27,4 @@ poetry.lock.bak
 .idea/
 .vscode/
 *.swp
+/data/config.yaml
