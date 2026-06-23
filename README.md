@@ -179,10 +179,13 @@ ICSearcher/
 
 The script:
 
-1. **Installs system build deps** (toolchain, cmake, python) via apt.
+1. **Checks** that the system build tools from the Prerequisites section are
+   present (it does not install them — and uses no `sudo` itself).
 2. **ArduPilot** — clones `github.com/ardupilot/ardupilot` at a stable
    `Copter-*` tag, runs its `install-prereqs-ubuntu.sh`, and builds the
-   ArduCopter SITL once.
+   ArduCopter SITL once via `uv run python sim_vehicle.py` (so the firmware's
+   Python tools — `pexpect`, `MAVProxy`, `dronekit-sitl` — come from the project
+   venv installed by `uv sync --group ardupilot`, not a system pip).
 3. **PX4** — clones `github.com/PX4/PX4-Autopilot` at a stable release, runs
    its `ubuntu.sh`, builds `px4_sitl jmavsim`, and writes the
    `sitl_multiple_run_single.sh` launcher that multi-instance validation uses.
