@@ -72,20 +72,19 @@ class DroneMavlink:
         return True
 
     def ready2fly(self) -> bool:
-        """
-        wait for IMU can work
-        :return:
-        """
+        """wait for IMU can work"""
+        attempt = 0
         while True:
+            attempt += 1
             message = self._master.recv_match(type=['STATUSTEXT'], blocking=True, timeout=30)
             if message is None:
+                if attempt % 2 == 0:  # every ~60s
+                    logger.info(f"Still waiting for IMU ready... (attempt {attempt})")
                 continue
             message = message.to_dict()["text"]
-            # print(message)
             if toolConfig.MODE == "Ardupilot" and "IMU0 is using GPS" in message:
                 logger.debug("Ready to fly.")
                 return True
-            # print(message)
             if toolConfig.MODE == "PX4" and "home set" in message:
                 logger.debug("Ready to fly.")
                 return True
@@ -542,9 +541,13 @@ class GaMavlinkAPM(DroneMavlink, multiprocessing.Process):
             raise ValueError('Connect at first!')
         try:
             timeout_start = time.time()
+            wait_cycle = 0
             while time.time() < timeout_start + timeout:
+                wait_cycle += 1
                 message = self._master.recv_match(type=['STATUSTEXT'], blocking=True, timeout=30)
                 if message is None:
+                    if wait_cycle % 2 == 0:  # every ~60s
+                        logger.info(f"Waiting for flight completion... ({wait_cycle * 30}s)")
                     continue
                 # print(message)
                 message = message.to_dict()
@@ -617,11 +620,15 @@ class GaMavlinkPX4(DroneMavlink, multiprocessing.Process):
             raise ValueError('Connect at first!')
         try:
             timeout_start = time.time()
+            wait_cycle = 0
             while time.time() < timeout_start + timeout:
+                wait_cycle += 1
                 # PX4 needs manual send the heartbeat for GCS
                 self.gcs_msg_request()
                 message = self._master.recv_match(type=['STATUSTEXT'], blocking=False, timeout=30)
                 if message is None:
+                    if wait_cycle % 2 == 0:
+                        logger.info(f"Waiting for PX4 flight completion... ({wait_cycle * 30}s)")
                     continue
                 message = message.to_dict()
                 out_msg = "None"
