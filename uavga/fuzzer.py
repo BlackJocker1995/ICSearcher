@@ -15,7 +15,7 @@ from Cptool.gaSimManager import GaSimManager
 from Cptool.mavtool import min_max_scaler_param
 from ModelFit.approximate import CyLSTM, Modeling
 from uavga.problem import ProblemGA
-from uavga.searcher import SearchOptimizer, GAOptimizer, GAOptimizerOld
+from uavga.searcher import GAOptimizer
 
 
 def split_segment(csv_data):
@@ -251,8 +251,8 @@ def return_cluster_thres_gen(thres=0.4):
                 candidate_vars.extend(pop_v[col_index])
                 candidate_objs.extend(normal_pop_p[col_index])
     # Array
-    candidate_objs = np.array(candidate_objs).astype(np.float)
-    candidate_vars = np.array(candidate_vars).astype(np.float)
+    candidate_objs = np.array(candidate_objs).astype(float)
+    candidate_vars = np.array(candidate_vars).astype(float)
     return candidate_vars, candidate_objs
 
 
@@ -262,7 +262,7 @@ def reshow(params, values):
     manager.mav_monitor_init()
 
     manager.mav_monitor_connect()
-    manager.mav_monitor_set_mission("Cptool/mission.txt", random=True)
+    manager.mav_monitor_set_mission(toolConfig.resolve("Cptool/mission.txt"), random=True)
 
     manager.mav_monitor_set_param(params=params, values=values)
 

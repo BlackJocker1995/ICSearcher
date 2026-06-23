@@ -7,108 +7,87 @@ ICSearcher is an improved version of LGDFuzzer.
 
 # Log
 Update: 22-07-15, support px4
+Update: stage-1 refactor — Poetry dependency management, unified loguru logging,
+crash-on-import fixes, config driven by `config.yaml`, upstream simulator setup script.
 
 ## Requirement
-Python package requirement: numpy ; pandas ; pymavlink ; pyulog ; keras ; tensorflow
+OS: Ubuntu 20.04 / 22.04 (recommend). Python >= 3.9.
 
-OS: The program is only test in Ubuntu 18.04 and 20.04 (recommend).
-
-`
-pip3 install pymavlink pandas pyulog eventlet keras tensorflow
-`
-
-
-Simulation requirement: Ardupilot [SITL](https://github.com/ArduPilot/ardupilot). We suggest applying python3 to run STIL simulator.
-Jmavsim for PX4, which requires source build in PX4 file.
-
-The initializer of Ardupilot simulator needs to change the path in the file `Cptool.config.py` with item
-`SITL_PATH`.
-
-For example,
-`
-python3 {Your Ardupilot path}/Tools/autotest/sim_vehicle.py --location=AVC_plane --out=127.0.0.1:14550 -v ArduCopter -w -S {toolConfig.SPEED} "
-`
-
-If you want to run PX4 evaluation in multiple thread, you should change the following code in PX4-Ardupilot.
-
-1. Create the file `Tools/sitl_multiple_run_single.sh` and add content next:
+Dependencies are now managed with [Poetry](https://python-poetry.org/) and pinned
+in `pyproject.toml` / `poetry.lock`. Install everything (including a CUDA build of
+PyTorch) with:
 
 ```bash
-#!/bin/bash
-sitl_num=0
-[ -n "$1" ] && sitl_num="$1"
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-src_path="$SCRIPT_DIR/.."
-build_path=${src_path}/build/px4_sitl_default
-pkill  -f "px4 -i $sitl_num"
-sleep 1
-export PX4_SIM_MODEL=iris
-working_dir="$build_path/instance_$sitl_num"
-[ ! -d "$working_dir" ] && mkdir -p "$working_dir"
-pushd "$working_dir" &>/dev/null
-echo "starting instance $sitl_numin $(pwd)"
-../bin/px4 -i $sitl_num -d "$build_path/etc" -s etc/init.d-posix/rcS # >out.log 2>err.log &
-popd &>/dev/null
+poetry install
 ```
-2. Change the flight home point in `Tools/jmavsim_run.sh`
+
+> CUDA: `pyproject.toml` pins PyTorch to the `cu121` wheel index. If your driver
+> needs a different CUDA toolkit, edit the `[[tool.poetry.source]]` block
+> (`cu118` / `cu124`).
+
+Python packages used: numpy, pandas, scipy, scikit-learn, pymavlink, pyulog,
+keras/tensorflow, geatpy (GA), loguru, pyyaml, tqdm, and torch (CUDA).
+
+## Upstream simulators
+Run the bootstrap script to clone & build ArduPilot SITL and PX4-Autopilot +
+JMavSim, install their build deps, and provision the PX4 multi-instance helper:
 
 ```bash
-export PX4_HOME_LAT=40.072842
-export PX4_HOME_LON=-105.230575
-export PX4_HOME_ALT=0.000000
-export PX4_SIM_SPEED_FACTOR=3 # speed
+scripts/setup_sims.sh                 # both simulators, default paths
+scripts/setup_sims.sh --ardupilot     # only ArduPilot
+scripts/setup_sims.sh --px4           # only PX4
 ```
 
-## Deployment
-The configuration is in `Cptool.config.py`.
+Override the install locations with env vars (defaults match `config.yaml`):
 
-If you want to try PX4 simulation, change the sentence `toolConfig.select_mode("Ardupilot")` to `toolConfig.select_mode("PX4")`
+```bash
+ARDUPILOT_DIR=/opt/ardupilot PX4_DIR=/opt/PX4-Autopilot scripts/setup_sims.sh
+```
 
-## Configuration of System config.py
-* ARDUPILOT_LOG_PATH: log path of ardupilot running, noted that, the path needs to have a flag file "logs/LASTLOG.TXT".
-Or you can manually run the simulation at first in {ARDUPILOT_LOG_PATH} to auto generate flag file. 
+GUI note: PX4 SITL is launched with `HEADLESS=1` (no JMavSim 3D window) so
+unattended fuzzing does not need a display — the anomaly detector reads flight
+telemetry over MAVLink. ArduPilot SITL never opens a GUI either. Remove
+`HEADLESS=1` in `Cptool/gaSimManager.py:start_sitl` (PX4 branch) if you want the
+3D view for debugging.
 
-The log path for PX4 is in `{PX4_Path}/build/px4_sitl_default/logs/`, which is no need to change.
+## Configuration
+All configuration lives in `Cptool/config.yaml`. The `mode:` field
+(`PX4` or `Ardupilot`) is authoritative: it is read once at startup and all
+mode-derived constants (`STATUS_ORDER`, `PARAM`, `PARAM_PART`, paths) are computed
+from it. Point the `paths:` block at your simulator locations.
 
-* SIM: simulation type.
+Key fields:
+* `mode` — `PX4` or `Ardupilot`.
+* `paths.{sitl,px4_run,jmavsim,ardupilot_log,...}` — simulator executables / log dirs.
+* `simulation.{speed,home,wind_range,window,altitude}` — sim parameters.
+* `param_files.{ardupilot,px4}` — parameter JSON files.
 
-* AIRSIM_PATH: if select airsim, you should set the execution path.
+`ARDUPILOT_LOG_PATH` must contain a flag file `logs/LASTLOG.TXT` (run one sim
+flight there first to auto-generate it). PX4 log path is derived from
+`px4_run` automatically.
 
-* PX4_RUN_PATH: if select PX4, you should set the execution path.
+## Pipeline
+`0.collect.py` / `0.collect_px4.py` — start simulation to collect flight logs.
+`1.trans_bin2csv.py` / `1.trans_bin2csv_px4.py` — transform the bin/ulg files to csv.
+`2.extract_feature.py` / `2.extract_feature_px4.py` — extract features from csv.
+`2.raw_split.py` / `2.raw_split_px4.py` — split test features for the searcher.
+`2.feature_split.py` / `2.feature_split_px4.py` — split csv into train/test.
+`2.train_lstm.py` / `2.train_lstm_px4.py` — train the LSTM predictor.
+`3.lgfuzzer.py` / `3.lgfuzzer_px4.py` — start the surrogate-guided fuzzing.
+`4.pre_validate.py` / `4.pre_validate_px4.py` — select candidates.
+`4.validate.py` / `4.validate_px4.py` — validate configurations in the simulator
+(use `--device {n}` to run a specific SITL instance in parallel).
+`5.range.py` / `5.range_px4.py` — derive safe-range guidelines from validated results.
 
-* PARAM: the parameter used in predictor.
+## Tests
+Pure-function unit tests (no SITL required):
 
-* PARAM_PART: the parameter that participate in fuzzing.
+```bash
+poetry run pytest
+```
 
-* INPUT_LEN: input length of predictor.
-
-
-## Description
-
-`0.collect.py` start simulation to collect flight logs.
-
-`1.trans_bin2csv.py` transform the bin file to csv.
-
-`2.extract_feature.py` extract feature from csv.
-
-`2.raw_split.py` split the test feature for further searcher.
-
-`2.feature_split.py` split the csv data for train and test.
-
-`2.train_lstm.py` train a model predictor.
-
-`3.lgfuzzer.py` start the fuzzing test.
-
-`4.pre_validate.py` select candidates.
-
-`4.validate.py` validate configurations through simulator.
-
-If you want to validate with multiple simulator, you can use validate.py -- device {xxx} to start multiple SITL
-
-`4.validate_thread.py` validate configurations through multiple simulators, where use --thread {xx} to launch multiple tab validate.py
-
-Noted: For PX4,  `4.validate_px4_thread.py` will call the `4.validate_px4_thread_version.py`.
-If you have no requirement for multiple thread, you should use `4.validate_thread_px4.py`
-
-
-`5.range.py` summary range guideline by validated result.
+## Logging
+All modules use [loguru](https://github.com/Delgan/loguru) via
+`Cptool/logging_config.py`. `setup_logging(debug=...)` configures one unified
+stderr sink and bridges any remaining stdlib `logging` calls into it, so nothing
+is silenced.

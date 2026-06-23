@@ -3,12 +3,8 @@ import os
 
 import numpy as np
 import pandas as pd
-from pymavlink import mavutil, mavwp, mavextra
+from pymavlink import mavextra
 from Cptool.config import toolConfig
-import sys, select, os
-import datetime
-from timeit import default_timer as timer
-import signal
 
 class Location:
     def __init__(self, x, y=None, timeS=0):
@@ -35,35 +31,12 @@ class Location:
         return mavextra.distance_lat_lon(point1.x, point1.y,
                                          point2.x, point2.y)
 
-class MavlinkManager:
-    """Manage mavlink connections and messaging"""
-    
-    def __init__(self):
-        self.connections = {}
-        
-    def create_connection(self, vehicle_id, port):
-        """Create and store mavlink connection"""
-        conn = mavutil.mavlink_connection(f'udp:0.0.0.0:{port}')
-        self.connections[vehicle_id] = conn
-        return conn
-        
-    async def monitor_messages(self, vehicle_id):
-        """Async message monitoring"""
-        conn = self.connections[vehicle_id]
-        while True:
-            msg = await conn.recv_match_async()
-            if msg:
-                await self.process_message(msg)
-
 def load_param():
     """
     load parameter we want to fuzzing
     :return:
     """
-    if toolConfig.MODE == 'Ardupilot':
-        path = 'Cptool/param_ardu.json'
-    elif toolConfig.MODE == 'PX4':
-        path = 'Cptool/param_px4.json'
+    path = toolConfig._param_file(toolConfig.MODE)
     with open(path, 'r') as f:
         return pd.DataFrame(json.loads(f.read()))
 
@@ -73,10 +46,7 @@ def load_sub_param():
     load parameter we want to fuzzing
     :return:
     """
-    if toolConfig.MODE == 'Ardupilot':
-        path = 'Cptool/param_ardu.json'
-    elif toolConfig.MODE == 'PX4':
-        path = 'Cptool/param_px4.json'
+    path = toolConfig._param_file(toolConfig.MODE)
     with open(path, 'r') as f:
         return pd.DataFrame(json.loads(f.read()))[toolConfig.PARAM_PART]
 

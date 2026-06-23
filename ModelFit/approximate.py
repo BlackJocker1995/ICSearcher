@@ -14,9 +14,15 @@ from keras.models import Sequential
 from numpy.lib.stride_tricks import sliding_window_view
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
-from tcn import TCN
 from tensorflow.python.keras.models import load_model
 from tqdm import tqdm
+
+try:
+    # Optional TCN backend (PyPI package: keras-tcn). Only needed if you use
+    # the CyTCN surrogate; CyLSTM works without it.
+    from tcn import TCN
+except ImportError:  # pragma: no cover - optional dependency
+    TCN = None
 
 from Cptool.config import toolConfig
 from Cptool.mavtool import min_max_scaler

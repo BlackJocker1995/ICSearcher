@@ -1,4 +1,4 @@
-import logging
+from loguru import logger
 import os
 import time
 from datetime import datetime
@@ -31,7 +31,7 @@ if __name__ == '__main__':
 
             manager.mav_monitor_init(GaMavlinkPX4, 0)
 
-            manager.mav_monitor.set_mission('Cptool/fitCollection_px4.txt', False)
+            manager.mav_monitor.set_mission(toolConfig.mission_file(), False)
 
             time.sleep(2)
             manager.mav_monitor.set_random_param_and_start()
@@ -48,5 +48,5 @@ if __name__ == '__main__':
                 GaMavlinkPX4.delete_current_log()
 
         except Exception as e:
-            logging.warning(e)
+            logger.warning(e)
             continue

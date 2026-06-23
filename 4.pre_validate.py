@@ -1,6 +1,6 @@
 import argparse
 import csv
-import logging
+from loguru import logger
 import os
 import pickle
 import time

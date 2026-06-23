@@ -1,6 +1,5 @@
 import glob
 import json
-import logging
 import multiprocessing
 import os
 import random
@@ -10,6 +9,7 @@ import time
 import numpy as np
 import pandas as pd
 import ray
+from loguru import logger
 from pymavlink import mavutil, mavwp
 from pymavlink.DFReader import DFMessage
 from pymavlink.mavutil import mavserial
@@ -41,7 +41,7 @@ class DroneMavlink:
             self._master.wait_heartbeat(timeout=30)
         except TimeoutError:
             return False
-        logging.info("Heartbeat from system (system %u component %u) from %u" % (
+        logger.info("Heartbeat from system (system %u component %u) from %u" % (
             self._master.target_system, self._master.target_component, self._port))
         return True
 
@@ -56,11 +56,11 @@ class DroneMavlink:
             message = message.to_dict()["text"]
             # print(message)
             if toolConfig.MODE == "Ardupilot" and "IMU0 is using GPS" in message:
-                logging.debug("Ready to fly.")
+                logger.debug("Ready to fly.")
                 return True
             # print(message)
             if toolConfig.MODE == "PX4" and "home set" in message:
-                logging.debug("Ready to fly.")
+                logger.debug("Ready to fly.")
                 return True
 
     def set_mission(self, mission_file, israndom: bool = False, timeout=30) -> bool:
@@ -72,14 +72,14 @@ class DroneMavlink:
         :return: success
         """
         if not self._master:
-            logging.warning('Mavlink handler is not connect!')
+            logger.warning('Mavlink handler is not connect!')
             raise ValueError('Connect at first!')
 
         loader = mavwp.MAVWPLoader()
         loader.target_system = self._master.target_system
         loader.target_component = self._master.target_component
         loader.load(mission_file)
-        logging.debug(f"Load mission file {mission_file}")
+        logger.debug(f"Load mission file {mission_file}")
 
         # if px4, set home at first
         if toolConfig.MODE == "PX4":
@@ -100,11 +100,11 @@ class DroneMavlink:
                 if msg is not None and seq_list[msg.seq] is True:
                     self._master.mav.send(loader.wp(msg.seq))
                     seq_list[msg.seq] = False
-                    logging.debug(f'Sending waypoint {msg.seq}')
+                    logger.debug(f'Sending waypoint {msg.seq}')
             mission_ack_msg = self._master.recv_match(type=['MISSION_ACK'], blocking=True, timeout=timeout)
-            logging.info(f'Upload mission finish.')
+            logger.info(f'Upload mission finish.')
         except TimeoutError:
-            logging.warning('Upload mission timeout!')
+            logger.warning('Upload mission timeout!')
             return False
         return True
 
@@ -114,7 +114,7 @@ class DroneMavlink:
         :return:
         """
         if not self._master:
-            logging.warning('Mavlink handler is not connect!')
+            logger.warning('Mavlink handler is not connect!')
             raise ValueError('Connect at first!')
         # self._master.set_mode_loiter()
         if toolConfig.MODE == "PX4":
@@ -125,7 +125,7 @@ class DroneMavlink:
             self._master.arducopter_arm()
             self._master.set_mode_auto()
 
-        logging.info('Try to arm and start.')
+        logger.info('Try to arm and start.')
 
     def set_param(self, param: str, value: float) -> None:
         """
@@ -160,7 +160,7 @@ class DroneMavlink:
         while True:
             message = self._master.recv_match(type=['PARAM_VALUE', 'PARM'], blocking=True).to_dict()
             if message['param_id'] == param:
-                logging.debug('name: %s\t value: %f' % (message['param_id'], message['param_value']))
+                logger.debug('name: %s\t value: %f' % (message['param_id'], message['param_value']))
                 break
         return message['param_value']
 
@@ -192,7 +192,7 @@ class DroneMavlink:
         :return:
         """
         if not self._master:
-            logging.warning('Mavlink handler is not connect!')
+            logger.warning('Mavlink handler is not connect!')
             raise ValueError('Connect at first!')
         mode_id = self._master.mode_mapping()[mode]
 
@@ -202,7 +202,7 @@ class DroneMavlink:
         while True:
             message = self._master.recv_match(type='COMMAND_ACK', blocking=True).to_dict()
             if message['command'] == mavutil.mavlink.MAVLINK_MSG_ID_SET_MODE:
-                logging.debug(f'Mode: {mode} Set successful')
+                logger.debug(f'Mode: {mode} Set successful')
                 break
 
     # Special operation
@@ -236,7 +236,7 @@ class DroneMavlink:
                                                -105.230575,
                                                0.000000)
         msg = self._master.recv_match(type=['COMMAND_ACK'], blocking=True, timeout=30)
-        logging.debug(f"Home set callback: {msg.command}")
+        logger.debug(f"Home set callback: {msg.command}")
 
     def gcs_msg_request(self):
         self._master.mav.heartbeat_send(mavutil.mavlink.MAV_TYPE_GCS,
@@ -326,7 +326,7 @@ class DroneMavlink:
                         csv_data = GaMavlinkAPM.extract_log_file(log_path + f'/{file}')
                     csv_data.to_csv(f'{log_path}/csv/{name}.csv', index=False)
                 except Exception as e:
-                    logging.warning(f"Error processing {file} : {e}")
+                    logger.warning(f"Error processing {file} : {e}")
                     continue
 
 
@@ -412,11 +412,11 @@ class GaMavlinkAPM(DroneMavlink, multiprocessing.Process):
         df_array = pd.DataFrame(columns=pd_array.columns)
         for group, group_item in pd_array.groupby('TimeS'):
             # fillna
-            group_item = group_item.fillna(method='ffill')
-            group_item = group_item.fillna(method='bfill')
+            group_item = group_item.ffill()
+            group_item = group_item.bfill()
             df_array.loc[len(df_array.index)] = group_item.mean()
         # Drop nan
-        df_array = df_array.fillna(method='ffill')
+        df_array = df_array.ffill()
         df_array = df_array.dropna()
 
         # Sort
@@ -477,7 +477,7 @@ class GaMavlinkAPM(DroneMavlink, multiprocessing.Process):
                 csv_data = GaMavlinkAPM.extract_log_file(log_path + f'/{file}')
                 csv_data.to_csv(f'{log_path}/csv/{name}.csv', index=False)
             except Exception as e:
-                logging.warning(f"Error processing {file} : {e}")
+                logger.warning(f"Error processing {file} : {e}")
                 continue
         return True
 
@@ -564,7 +564,7 @@ class GaMavlinkAPM(DroneMavlink, multiprocessing.Process):
                 if message["severity"] == 6:
                     if "Land" in line:
                         # if successful landed, break the loop and return true
-                        logging.info(f"Successful break the loop.")
+                        logger.info(f"Successful break the loop.")
                         return True
                 elif message["severity"] == 2 or message["severity"] == 0:
                     # Appear error, break loop and return false
@@ -577,9 +577,9 @@ class GaMavlinkAPM(DroneMavlink, multiprocessing.Process):
                     elif "PreArm" in line:
                         pass
                         # will not generate log file
-                        logging.info(f"Get error with {message['text']}")
+                        logger.info(f"Get error with {message['text']}")
                         return True
-                    logging.info(f"Get error with {message['text']}")
+                    logger.info(f"Get error with {message['text']}")
                     if remain_fail:
                         # Keep problem log
                         return True
@@ -587,10 +587,10 @@ class GaMavlinkAPM(DroneMavlink, multiprocessing.Process):
                         return False
         except TimeoutError:
             # Mission point time out, change other params
-            logging.warning('Wp timeout!')
+            logger.warning('Wp timeout!')
             return False
         except KeyboardInterrupt:
-            logging.info('Key bordInterrupt! exit')
+            logger.info('Key bordInterrupt! exit')
             return False
         return False
 
@@ -609,7 +609,7 @@ class GaMavlinkAPM(DroneMavlink, multiprocessing.Process):
                 # print(msg2)
                 if msg['severity'] in [0, 2]:
                     # self.send_msg_queue.put('crash')
-                    logging.info('ArduCopter detect Crash.')
+                    logger.info('ArduCopter detect Crash.')
                     self.send_msg_queue.put('error')
                     break
 
@@ -640,7 +640,7 @@ class GaMavlinkPX4(DroneMavlink, multiprocessing.Process):
                 if message["severity"] == 6:
                     if "landed" in line:
                         # if successful landed, break the loop and return true
-                        logging.info(f"Successful break the loop.")
+                        logger.info(f"Successful break the loop.")
                         return True
                 elif message["severity"] == 2 or message["severity"] == 0:
                     # Appear error, break loop and return false
@@ -653,9 +653,9 @@ class GaMavlinkPX4(DroneMavlink, multiprocessing.Process):
                     elif "PreArm" in line:
                         pass
                         # will not generate log file
-                        logging.info(f"Get error with {message['text']}")
+                        logger.info(f"Get error with {message['text']}")
                         return True
-                    logging.info(f"Get error with {message['text']}")
+                    logger.info(f"Get error with {message['text']}")
                     if remain_fail:
                         # Keep problem log
                         return True
@@ -664,10 +664,10 @@ class GaMavlinkPX4(DroneMavlink, multiprocessing.Process):
             return False
         except TimeoutError:
             # Mission point time out, change other params
-            logging.warning('Wp timeout!')
+            logger.warning('Wp timeout!')
             return False
         except KeyboardInterrupt:
-            logging.info('Key bordInterrupt! exit')
+            logger.info('Key bordInterrupt! exit')
             return False
 
     def init_ulg_log_file(self, device_i=None):
@@ -677,7 +677,7 @@ class GaMavlinkPX4(DroneMavlink, multiprocessing.Process):
             list_of_files = glob.glob(log_path)  # * means all if need specific format then *.csv
             latest_file = max(list_of_files, key=os.path.getctime)
             self.log_file = latest_file
-            logging.info(f"Current log file: {latest_file}")
+            logger.info(f"Current log file: {latest_file}")
         else:
             now = time.localtime()
             now_time = time.strftime("%Y-%m-%d", now)
@@ -686,7 +686,7 @@ class GaMavlinkPX4(DroneMavlink, multiprocessing.Process):
             list_of_files = glob.glob(log_path)  # * means all if need specific format then *.csv
             latest_file = max(list_of_files, key=os.path.getctime)
             self.log_file = latest_file
-            logging.info(f"Current log file: {latest_file}")
+            logger.info(f"Current log file: {latest_file}")
 
     @staticmethod
     def fill_and_process_pd_log(pd_array: pd.DataFrame):
@@ -701,11 +701,11 @@ class GaMavlinkPX4(DroneMavlink, multiprocessing.Process):
 
         for group, group_item in pd_array.groupby('TimeS'):
             # fillna
-            group_item = group_item.fillna(method='ffill')
-            group_item = group_item.fillna(method='bfill')
+            group_item = group_item.ffill()
+            group_item = group_item.bfill()
             df_array.loc[len(df_array.index)] = group_item.mean()
         # Drop nan
-        df_array = df_array.fillna(method='ffill')
+        df_array = df_array.ffill()
         df_array = df_array.dropna()
 
         return df_array
@@ -772,7 +772,7 @@ class GaMavlinkPX4(DroneMavlink, multiprocessing.Process):
                 csv_data = GaMavlinkPX4.extract_log_file(log_path + f'/{file}')
                 csv_data.to_csv(f'{log_path}/csv/{name}.csv', index=False)
             except Exception as e:
-                logging.warning(f"Error processing {file} : {e}")
+                logger.warning(f"Error processing {file} : {e}")
                 continue
         return True
 
@@ -785,23 +785,3 @@ class GaMavlinkPX4(DroneMavlink, multiprocessing.Process):
         # Remove file
         if os.path.exists(latest_file):
             os.remove(latest_file)
-
-
-class LogHandler:
-    """Centralized log handling"""
-    
-    def __init__(self, log_dir):
-        self.log_dir = log_dir
-        
-    def extract_log(self, log_file, log_type):
-        """Extract log data based on type"""
-        if log_type == 'px4':
-            return self._extract_px4_log(log_file)
-        elif log_type == 'ardupilot':
-            return self._extract_apm_log(log_file)
-            
-    def process_logs(self, files, processors=4):
-        """Process multiple log files in parallel"""
-        from multiprocessing import Pool
-        with Pool(processors) as p:
-            return p.map(self.extract_log, files)

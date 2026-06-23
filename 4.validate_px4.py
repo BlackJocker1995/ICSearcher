@@ -1,22 +1,39 @@
 import argparse
 import csv
-import logging
 import os
 import pickle
 import time
 
 import numpy as np
 import pandas as pd
+from loguru import logger
 
 import Cptool
 import ModelFit
 from Cptool.config import toolConfig
-from Cptool.gaMavlink import GaMavlinkAPM, GaMavlinkPX4
+from Cptool.gaMavlink import GaMavlinkPX4
 from Cptool.gaSimManager import GaSimManager
 
-
-# from Cptool.gaSimManager import GaSimManager
 from uavga.fuzzer import return_random_n_gen, return_cluster_thres_gen
+
+
+def _params_csv_path():
+    return f'result/{toolConfig.MODE}/params{toolConfig.EXE}.csv'
+
+
+def _ensure_csv_header():
+    """Create the params CSV with the correct header if it does not exist.
+
+    Uses PARAM_PART (the subset being fuzzed) plus the score/result columns,
+    matching the ArduPilot validator. The original PX4 script used PARAM and
+    never wrote the header on first run, which silently corrupted the file.
+    """
+    path = _params_csv_path()
+    if not os.path.exists(path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        data = pd.DataFrame(columns=(toolConfig.PARAM_PART + ['score', 'result']))
+        data.to_csv(path, index=False)
+
 
 if __name__ == '__main__':
 
@@ -37,28 +54,29 @@ if __name__ == '__main__':
     # Simulator validation
     manager = GaSimManager(debug=toolConfig.DEBUG)
 
-    i = 0
     # Random order
     rand_index = (np.arange(candidate_obj.shape[0]))
     np.random.shuffle(rand_index)
     candidate_obj = candidate_obj[rand_index]
     candidate_var = candidate_var[rand_index]
 
+    csv_path = _params_csv_path()
+
     # Loop to validate configurations with SITL simulator
     for index, vars, value_vector in zip(np.arange(candidate_obj.shape[0]), candidate_var, candidate_obj):
         print(f'======================={index} / {candidate_obj.shape[0]} ==========================')
-        # if exist file, append new data in the end.
-        if os.path.exists(f'result/{toolConfig.MODE}/params{toolConfig.EXE}.csv'):
-            while not os.access(f"result/{toolConfig.MODE}/params{toolConfig.EXE}.csv", os.R_OK):
-                continue
-            data = pd.read_csv(f'result/{toolConfig.MODE}/params{toolConfig.EXE}.csv')
+        # Skip configs already validated.
+        if os.path.exists(csv_path):
+            while not os.access(csv_path, os.R_OK):
+                time.sleep(0.1)
+            data = pd.read_csv(csv_path)
             exit_data = data.drop(['score', 'result'], axis=1, inplace=False)
-            # carry our simulation test
             if ((exit_data - value_vector).sum(axis=1).abs() < 0.00001).sum() > 0:
                 continue
 
-        configuration = pd.Series(value_vector, index=toolConfig.PARAM).to_dict()
-        # start multiple SITL
+        # Use PARAM_PART (the subset actually being fuzzed), not the full PARAM set.
+        configuration = pd.Series(value_vector, index=toolConfig.PARAM_PART).to_dict()
+        # start SITL
         manager.start_sitl()
         manager.mav_monitor_init(GaMavlinkPX4, device)
 
@@ -66,36 +84,30 @@ if __name__ == '__main__':
             manager.stop_sitl()
             continue
 
-        manager.mav_monitor.set_mission("Cptool/fitCollection_px4.txt", israndom=False)
+        manager.mav_monitor.set_mission(toolConfig.mission_file(), israndom=False)
         manager.mav_monitor.set_params(configuration)
 
         time.sleep(2)
         manager.mav_monitor.start_mission()
         result = manager.mav_monitor_error()
+        logger.info(f"Validated result: {result}")
 
-        # if the result have no instability, skip.
-        if not os.path.exists(f'result/{toolConfig.MODE}/params{toolConfig.EXE}.csv'):
-            while not os.access(f"result/{toolConfig.MODE}/params{toolConfig.EXE}.csv", os.W_OK):
-                time.sleep(0.1)
-                continue
-            data = pd.DataFrame(columns=(toolConfig.PARAM + ['score', 'result']))
-        else:
-            while not os.access(f"result/{toolConfig.MODE}/params{toolConfig.EXE}.csv", os.W_OK):
-                time.sleep(0.1)
-                continue
-            # Add instability result
-            tmp_row = value_vector.tolist()
-            tmp_row.append(vars[0])
-            tmp_row.append(result)
+        # Always ensure the header exists before appending.
+        _ensure_csv_header()
+        while not os.access(csv_path, os.W_OK):
+            time.sleep(0.1)
 
-            # Write Row
-            with open(f"result/{toolConfig.MODE}/params{toolConfig.EXE}.csv", 'a+') as f:
-                csv_file = csv.writer(f)
-                csv_file.writerow(tmp_row)
-                logging.debug("Write row to params{toolConfig.EXE}.csv.")
+        # Append the validated row.
+        tmp_row = value_vector.tolist()
+        tmp_row.append(vars[0])
+        tmp_row.append(result)
+
+        with open(csv_path, 'a+') as f:
+            csv_file = csv.writer(f)
+            csv_file.writerow(tmp_row)
+            logger.debug(f"Write row to params{toolConfig.EXE}.csv.")
 
         manager.stop_sitl()
-        i += 1
         time.sleep(1)
 
     localtime = time.asctime(time.localtime(time.time()))

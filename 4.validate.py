@@ -46,7 +46,7 @@ if __name__ == '__main__':
         # if exist file, append new data in the end.
         if os.path.exists(f'result/{toolConfig.MODE}/params{toolConfig.EXE}.csv'):
             while not os.access(f"result/{toolConfig.MODE}/params{toolConfig.EXE}.csv", os.R_OK):
-                continue
+                time.sleep(0.1)
             data = pd.read_csv(f'result/{toolConfig.MODE}/params{toolConfig.EXE}.csv')
             exit_data = data.drop(['score', 'result'], axis=1, inplace=False)
             # carry our simulation test
@@ -63,7 +63,7 @@ if __name__ == '__main__':
             manager.stop_sitl()
             continue
 
-        manager.mav_monitor.set_mission("Cptool/fitCollection.txt", israndom=False)
+        manager.mav_monitor.set_mission(toolConfig.mission_file(), israndom=False)
         manager.mav_monitor.set_params(configuration)
 
         manager.mav_monitor.start_mission()
@@ -77,7 +77,7 @@ if __name__ == '__main__':
             data.to_csv(f'result/{toolConfig.MODE}/params{toolConfig.EXE}.csv', index=False)
 
         while not os.access(f"result/{toolConfig.MODE}/params{toolConfig.EXE}.csv", os.W_OK):
-            continue
+            time.sleep(0.1)
         # Add instability result
         tmp_row = value_vector.tolist()
         tmp_row.append(vars[0])

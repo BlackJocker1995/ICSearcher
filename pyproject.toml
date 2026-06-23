@@ -1,0 +1,88 @@
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "icsearcher"
+version = "0.2.0"
+description = "Improved LGDFuzzer: surrogate-guided fuzzing for UAV autopilot controller parameters (ArduPilot / PX4)"
+authors = ["rain <rain@users.noreply.github.com>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/BlackJoker1995/ParameterRecommendation"
+packages = [
+    { include = "Cptool" },
+    { include = "ModelFit" },
+    { include = "uavga" },
+    { include = "range" },
+]
+
+# PyTorch CUDA index. CUDA 12.1 wheels. Change the url suffix (cu118/cu124) if
+# your driver requires a different CUDA toolkit version.
+[[tool.poetry.source]]
+name = "pytorch-cu121"
+url = "https://download.pytorch.org/whl/cu121"
+priority = "explicit"
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.13"
+
+# Core scientific stack
+numpy = ">=1.24,<2.0"
+pandas = ">=2.0"
+scipy = ">=1.10"
+scikit-learn = ">=1.2"
+matplotlib = ">=3.6"
+
+# Drone comms / sim control
+pymavlink = ">=2.4"
+pyulog = ">=1.0"
+pexpect = ">=4.8"
+
+# GA / search (kept in stage 1; migrated to pymoo in stage 3)
+geatpy = ">=2.7"
+
+# Surrogate model (kept in stage 1; migrated to PyTorch in stage 4).
+# Keras is bundled with tensorflow, so we do not pin it separately. The TCN
+# backend (PyPI: keras-tcn) is an optional extra: `poetry install -E tcn`.
+tensorflow = ">=2.12"
+keras-tcn = { version = ">=3.4", optional = true }
+
+# Distributed log conversion (kept in stage 1; removed in stage 4)
+ray = ">=2.5"
+
+# Config / logging / utils
+pyyaml = ">=6.0"
+loguru = ">=0.7"
+tqdm = ">=4.65"
+
+# Surrogate model backend (CUDA 12.1). The torch CUDA index is declared below;
+# poetry resolves against it. If resolution against the CUDA index is too slow
+# in your environment, comment out the source + the `source = "pytorch-cu121"`
+# line to fall back to the CPU wheel on PyPI.
+torch = { version = ">=2.1", source = "pytorch-cu121" }
+
+[tool.poetry.extras]
+# Install the optional TCN backend with: poetry install -E tcn
+tcn = ["keras-tcn"]
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=7.4"
+pytest-cov = ">=4.1"
+ruff = ">=0.1"
+black = ">=23.10"
+
+[tool.pytest.ini_options]
+minversion = "7.4"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra -q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+extend-exclude = ["model", "result", "fig"]
+
+[tool.black]
+line-length = 120
+target-version = ["py39", "py310", "py311"]

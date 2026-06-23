@@ -1,7 +1,6 @@
 """
 SimManager Version: 4.0 22-10-24
 """
-import logging
 import math
 import multiprocessing
 import os
@@ -12,12 +11,12 @@ from typing import Type
 
 import numpy as np
 import pexpect
-from numpy.dual import norm
 from pexpect import spawn
 from pymavlink import mavextra, mavwp, mavutil
 
 from Cptool.gaMavlink import GaMavlinkAPM, DroneMavlink
 from Cptool.config import toolConfig
+from Cptool.logging_config import setup_logging
 from Cptool.mavtool import Location
 from loguru import logger
 
@@ -33,12 +32,9 @@ class SimManager(object):
         self.sim_msg_queue = multiprocessing.Queue()
         self.mav_msg_queue = multiprocessing.Queue()
 
-        if debug:
-            logger.remove()
-            logger.add(sys.stderr, format="{time} {file} {line} {level} {message}", level="DEBUG")
-        else:
-            logger.remove()
-            logger.add(sys.stderr, format="{time} {file} {line} {level} {message}", level="INFO")
+        # One unified loguru sink for the whole process; stdlib logging is
+        # bridged into it so no module is silenced.
+        setup_logging(debug=debug)
 
     """
     Base Function
@@ -52,7 +48,7 @@ class SimManager(object):
         cmd = None
         if toolConfig.SIM == 'Airsim':
             cmd = f'gnome-terminal -- {toolConfig.AIRSIM_PATH} ' \
-                  f'-ResX={toolConfig.HEIGHT} -ResY={toolConfig.WEIGHT} -windowed'
+                  f'-ResX={toolConfig.HEIGHT} -ResY={toolConfig.WIDTH} -windowed'
         if toolConfig.SIM == 'Jmavsim':
             cmd = f'gnome-terminal -- bash {toolConfig.JMAVSIM_PATH}'
         if toolConfig.SIM == 'Morse':
@@ -163,7 +159,7 @@ class SimManager(object):
 
             self._sitl_task = (pexpect.spawn(cmd, cwd=toolConfig.ARDUPILOT_LOG_PATH, timeout=30, encoding='utf-8'))
 
-        if toolConfig.MODE == toolConfig.MODE == 'PX4':
+        if toolConfig.MODE == 'PX4':
 
             if os.path.exists(f"{toolConfig.PX4_RUN_PATH}/build/px4_sitl_default/instance_{drone_i}/eeprom/parameters_10016") \
                     and toolConfig.MODE == "PX4":
@@ -286,7 +282,7 @@ class SimManager(object):
                 break
         self._sitl_task.close(force=True)
         logger.info('Stop SITL task.')
-        logging.debug('Send mavclosed to Airsim.')
+        logger.debug('Send mavclosed to Airsim.')
 
     def stop_sim(self):
         self._sim_task.sendcontrol('c')
@@ -322,9 +318,9 @@ class GaSimManager(SimManager):
         # Waypoint
         loader = mavwp.MAVWPLoader()
         if toolConfig.MODE == "PX4":
-            loader.load('Cptool/fitCollection_px4.txt')
+            loader.load(toolConfig.mission_file())
         else:
-            loader.load('Cptool/fitCollection.txt')
+            loader.load(toolConfig.mission_file())
         #
         lpoint1 = Location(loader.wpoints[0])
         lpoint2 = Location(loader.wpoints[1])
@@ -350,7 +346,7 @@ class GaSimManager(SimManager):
             # System status message
             if status_message is not None and status_message.get_type() == "STATUSTEXT":
                 line = status_message.text
-                logging.debug(f"Status message: {status_message}")
+                logger.debug(f"Status message: {status_message}")
                 # print(status_message)
                 if status_message.severity == 6:
                     if "Disarming" in line or "landed" in line or "Landing" in line or "Land" in line:
@@ -381,7 +377,7 @@ class GaSimManager(SimManager):
             if position_msg is not None and position_msg.get_type() == "MISSION_CURRENT":
                 # print(position_msg)
                 if int(position_msg.seq) > current_mission and int(position_msg.seq) != 6:
-                    logging.debug(f"Mission change {current_mission} -> {position_msg.seq}")
+                    logger.debug(f"Mission change {current_mission} -> {position_msg.seq}")
                     lpoint1 = Location(loader.wpoints[current_mission])
                     lpoint2 = Location(loader.wpoints[position_msg.seq])
 

@@ -1,22 +1,28 @@
 # UAV Configuration Settings
 
 # Operation Mode (PX4 or Ardupilot)
+# This value is authoritative: it is read once at startup and all
+# mode-derived constants (STATUS_ORDER, PARAM, PARAM_PART, paths) are
+# computed from it. Override per-run with the --mode CLI flag in the
+# pipeline scripts.
 mode: PX4
 
 # Simulation Settings
 simulation:
   speed: 3
-  home: AVC_plane 
+  home: AVC_plane
   debug: true
   wind_range: [8, 10.7]
   window:
-    height: 640 
-    weight: 480
+    width: 640
+    height: 480
   altitude:
     limit_high: 50
     limit_low: 40
 
 # Path Settings
+# Leave a path empty ("") to fall back to the per-mode default. Absolute
+# paths are used as-is; relative paths are resolved against the repo root.
 paths:
   ardupilot_log: /media/rain/data
   sitl: /home/rain/ardupilot/Tools/autotest/sim_vehicle.py
@@ -25,15 +31,16 @@ paths:
   jmavsim: /home/rain/PX4-Autopilot/Tools/jmavsim_run.sh
   morse: /home/rain/ardupilot/libraries/SITL/examples/Morse/quadcopter.py
 
-# Model Settings  
+# Model Settings
 model:
   input_len: 4
   output_len: 1
   segment_len: 14
   retrans: true
-  cluster_choice_num: 10
 
-# Parameter Files
+cluster_choice_num: 10
+
+# Parameter Files (relative to repo root by default)
 param_files:
   ardupilot: Cptool/param_ardu.json
   px4: Cptool/param_px4.json

@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from Cptool.config import toolConfig
 from Cptool.gaMavlink import GaMavlinkAPM
 from Cptool.mavtool import load_param, select_sub_dict, read_unit_from_dict, get_default_values, read_range_from_dict
-from range.rangeproblem import RangeProblem, GARangeProblem
+from range.rangeproblem import GARangeProblem
 
 
 class BaseRangeOptimizer(ABC):

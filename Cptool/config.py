@@ -1,10 +1,17 @@
 # coding:utf-8
 import json
-import time
-import yaml
 import os
+import time
+from pathlib import Path
 
 import pandas as pd
+import yaml
+
+# Absolute path to the repo root (the directory that contains Cptool/).
+# Every relative path in the project is resolved against this so the pipeline
+# no longer depends on the current working directory.
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = REPO_ROOT / "Cptool"
 
 
 class ToolConfig:
@@ -15,16 +22,17 @@ class ToolConfig:
         pass
 
     def __init__(self):
-        # Load YAML config with fallback to defaults
-        self.yaml_config = self._load_yaml_config()
+        # yaml_config is internal scratch state, not a frozen config constant,
+        # so it bypasses the write-once __setattr__ guard via __dict__.
+        self.__dict__["yaml_config"] = self._load_yaml_config()
         self._init_defaults()
 
     def _load_yaml_config(self):
         """Load YAML config with fallback to empty dict"""
+        config_path = DATA_DIR / 'config.yaml'
         try:
-            config_path = os.path.join(os.path.dirname(__file__), 'config.yaml')
             with open(config_path, 'r') as f:
-                return yaml.safe_load(f)
+                return yaml.safe_load(f) or {}
         except (FileNotFoundError, yaml.YAMLError) as e:
             print(f"Warning: Could not load config.yaml ({str(e)}), using defaults")
             return {}
@@ -38,24 +46,71 @@ class ToolConfig:
             config = config.get(key, default)
         return config
 
+    def _param_file(self, mode):
+        """Resolve the parameter JSON path for the given mode.
+
+        Reads ``param_files.<mode>`` from config.yaml (which is relative to the
+        repo root by default) and falls back to ``Cptool/param_<mode>.json``.
+        """
+        key = 'ardupilot' if mode == 'Ardupilot' else 'px4'
+        rel = self._get_yaml_value('param_files', key, default=f'Cptool/param_{key}.json')
+        return str(REPO_ROOT / rel) if not os.path.isabs(rel) else rel
+
+    def resolve(self, rel):
+        """Resolve a repo-relative path to an absolute string.
+
+        Absolute paths are returned unchanged so machine-specific simulator
+        locations keep working. Use this for mission / fit-collection files
+        and any other data file bundled in the repo.
+        """
+        if not rel:
+            return rel
+        return rel if os.path.isabs(rel) else str(REPO_ROOT / rel)
+
+    def mission_file(self):
+        """Absolute path to the fit-collection mission for the current mode."""
+        name = 'Cptool/fitCollection_px4.txt' if self.__dict__['MODE'] == 'PX4' else 'Cptool/fitCollection.txt'
+        rel = self._get_yaml_value('missions', 'fit_collection', self.__dict__['MODE'].lower(), default=name)
+        return self.resolve(rel)
+
     def _init_defaults(self):
-        """Initialize with YAML values or defaults"""
+        """Initialize with YAML values or defaults.
+
+        Note: the YAML nests ``debug``/``wind_range``/``window``/``altitude``
+        under ``simulation:``, so they are read from there. The earlier code
+        read them from the top level and silently ignored the YAML values.
+        """
+        sim = self._get_yaml_value('simulation', default={}) or {}
+
         self.__dict__["MODE"] = self._get_yaml_value('mode', default=None)
-        self.__dict__["SPEED"] = self._get_yaml_value('simulation', 'speed', default=3)
-        self.__dict__["HOME"] = self._get_yaml_value('simulation', 'home', default="AVC_plane")
-        self.__dict__["DEBUG"] = self._get_yaml_value('debug', default=True)
-        self.__dict__["WIND_RANGE"] = self._get_yaml_value('wind_range', default=[8, 10.7])
-        self.__dict__["HEIGHT"] = self._get_yaml_value('window', 'height', default=640)
-        self.__dict__["WEIGHT"] = self._get_yaml_value('window', 'weight', default=480)
-        self.__dict__["LIMIT_H"] = self._get_yaml_value('flight', 'limit_h', default=50)
-        self.__dict__["LIMIT_L"] = self._get_yaml_value('flight', 'limit_l', default=40)
-        self.__dict__["ARDUPILOT_LOG_PATH"] = self._get_yaml_value('paths', 'ardupilot_log_path', default='/media/rain/data')
-        self.__dict__["SITL_PATH"] = self._get_yaml_value('paths', 'sitl_path', default="/home/rain/ardupilot/Tools/autotest/sim_vehicle.py")
-        self.__dict__["AIRSIM_PATH"] = self._get_yaml_value('paths', 'airsim_path', default="/media/rain/data/airsim/Africa_Savannah/LinuxNoEditor/Africa_001.sh")
-        self.__dict__["PX4_RUN_PATH"] = self._get_yaml_value('paths', 'px4_run_path', default='/home/rain/PX4-Autopilot')
-        self.__dict__["JMAVSIM_PATH"] = self._get_yaml_value('paths', 'jmavsim_path', default="/home/rain/PX4-Autopilot/Tools/jmavsim_run.sh")
-        self.__dict__["MORSE_PATH"] = self._get_yaml_value('paths', 'morse_path', default="/home/rain/ardupilot/libraries/SITL/examples/Morse/quadcopter.py")
+        self.__dict__["SPEED"] = sim.get('speed', 3)
+        self.__dict__["HOME"] = sim.get('home', "AVC_plane")
+        self.__dict__["DEBUG"] = sim.get('debug', True)
+        self.__dict__["WIND_RANGE"] = sim.get('wind_range', [8, 10.7])
+
+        window = sim.get('window', {}) or {}
+        # Renamed from the misleading WEIGHT (the value is a render width).
+        self.__dict__["WIDTH"] = window.get('width', 640)
+        self.__dict__["HEIGHT"] = window.get('height', 480)
+
+        altitude = sim.get('altitude', {}) or {}
+        self.__dict__["LIMIT_H"] = altitude.get('limit_high', 50)
+        self.__dict__["LIMIT_L"] = altitude.get('limit_low', 40)
+
+        paths = self._get_yaml_value('paths', default={}) or {}
+        self.__dict__["ARDUPILOT_LOG_PATH"] = paths.get('ardupilot_log', '/media/rain/data')
+        self.__dict__["SITL_PATH"] = paths.get('sitl', "/home/rain/ardupilot/Tools/autotest/sim_vehicle.py")
+        self.__dict__["AIRSIM_PATH"] = paths.get('airsim', "/media/rain/data/airsim/Africa_Savannah/LinuxNoEditor/Africa_001.sh")
+        self.__dict__["PX4_RUN_PATH"] = paths.get('px4_run', '/home/rain/PX4-Autopilot')
+        self.__dict__["JMAVSIM_PATH"] = paths.get('jmavsim', "/home/rain/PX4-Autopilot/Tools/jmavsim_run.sh")
+        self.__dict__["MORSE_PATH"] = paths.get('morse', "/home/rain/ardupilot/libraries/SITL/examples/Morse/quadcopter.py")
+
+        model = self._get_yaml_value('model', default={}) or {}
+        # CLUSTER_CHOICE_NUM lives at the top level of the YAML.
         self.__dict__["CLUSTER_CHOICE_NUM"] = self._get_yaml_value('cluster_choice_num', default=10)
+        # Echo model.* into config so consumers can read them if desired.
+        self.__dict__["INPUT_LEN"] = model.get('input_len', 4)
+        self.__dict__["OUTPUT_LEN"] = model.get('output_len', 1)
 
     def __setattr__(self, name, value):
         if name in self.__dict__:
@@ -65,9 +120,9 @@ class ToolConfig:
         self.__dict__[name] = value
 
     def __getattr__(self, item):
-        if self.__dict__["MODE"] is None:
+        if self.__dict__.get("MODE") is None:
             raise ValueError("Set config Mode at first!")
-        return self.__dict__[item]
+        raise AttributeError(item)
 
     def select_mode(self, mode):
         if mode not in ["Ardupilot", "PX4"]:
@@ -90,7 +145,7 @@ class ToolConfig:
                                              'AccX', 'AccY', 'AccZ', 'GyrX', 'GyrY', 'GyrZ',
                                              'MagX', 'MagY', 'MagZ', 'VibeX', 'VibeY', 'VibeZ']
 
-            with open('Cptool/param_ardu.json', 'r') as f:
+            with open(self._param_file(mode), 'r') as f:
                 param_name = pd.DataFrame(json.loads(f.read())).columns.tolist()
             self.__dict__["PARAM"] = param_name
 
@@ -116,15 +171,6 @@ class ToolConfig:
                 "WPNAV_ACCEL",
                 "ANGLE_MAX"
             ]
-
-            # self.__dict__["PARAM"] = [
-            #     "PSC_VELXY_P",
-            #     "INS_POS1_Z",
-            #     "INS_POS2_Z",
-            #     "INS_POS3_Z",
-            #     "WPNAV_SPEED",
-            #     "ANGLE_MAX"
-            # ]
         elif mode == "PX4":
             # PX4 : ['Jmavsim']
             self.__dict__["SIM"] = "Jmavsim"  # "Jmavsim"
@@ -138,7 +184,7 @@ class ToolConfig:
                                              'AccX', 'AccY', 'AccZ', 'GyrX', 'GyrY', 'GyrZ',
                                              'MagX', 'MagY', 'MagZ', 'VibeX', 'VibeY', 'VibeZ']
 
-            with open('Cptool/param_px4.json', 'r') as f:
+            with open(self._param_file(mode), 'r') as f:
                 param_name = pd.DataFrame(json.loads(f.read())).columns.tolist()
             self.__dict__["PARAM"] = param_name
 
@@ -167,19 +213,14 @@ class ToolConfig:
         ######################
         # Model Config       #
         ######################
-        # Status length
+        # Status length (exclude the leading TimeS column)
         self.__dict__["STATUS_LEN"] = len(self.__dict__["STATUS_ORDER"]) - 1
 
         # Parameter length
         self.__dict__["PARAM_LEN"] = len(self.__dict__["PARAM"])
 
-        # Predictor input vector length
-        self.__dict__["INPUT_LEN"] = 4
-        # Predictor output vector length
-        self.__dict__["OUTPUT_LEN"] = 1
-
-        # input data entry length
-        self.__dict__["DATA_LEN"] = self.__dict__["STATUS_LEN"] + len(toolConfig.PARAM)
+        # input data entry length = status channels + all params
+        self.__dict__["DATA_LEN"] = self.__dict__["STATUS_LEN"] + len(self.__dict__["PARAM"])
 
         # Whole predictor input length
         self.__dict__["INPUT_DATA_LEN"] = self.__dict__["DATA_LEN"] * self.__dict__["INPUT_LEN"]
@@ -191,7 +232,10 @@ class ToolConfig:
         self.__dict__["SEGMENT_LEN"] = 10 + self.__dict__["INPUT_LEN"]
 
         # transform values
-        self.__dict__["RETRANS"] = True
+        self.__dict__["RETRANS"] = self._get_yaml_value('model', 'retrans', default=True)
+
+        # Validate now that mode-derived paths are known.
+        self.validate_config()
 
     def get(self, key, default=None):
         """Safe config getter with default value"""
@@ -207,7 +251,9 @@ class ToolConfig:
         if self.__dict__["MODE"] not in ["Ardupilot", "PX4"]:
             raise ValueError("Invalid MODE - must be 'Ardupilot' or 'PX4'")
 
-        # Validate paths exist
+        # Warn (do not fail) when an external simulator path is configured but
+        # missing on this machine; the operator may be running a subset of the
+        # pipeline that does not need it.
         paths = ['SITL_PATH', 'PX4_RUN_PATH', 'ARDUPILOT_LOG_PATH']
         for path_key in paths:
             path = self.__dict__.get(path_key)
@@ -216,4 +262,10 @@ class ToolConfig:
 
 
 toolConfig = ToolConfig()
-toolConfig.select_mode("ArduPilot")
+# Respect the mode declared in config.yaml instead of hardcoding ArduPilot.
+# Pipeline scripts may still override with toolConfig.select_mode("PX4") /
+# select_mode("Ardupilot") via the --mode flag (wired up in stage 2).
+if toolConfig.MODE is None:
+    toolConfig.select_mode("Ardupilot")
+else:
+    toolConfig.select_mode(toolConfig.MODE)
