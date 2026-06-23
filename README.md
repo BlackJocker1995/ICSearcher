@@ -153,6 +153,9 @@ ICSearcher fuzzes real firmware, so you need the ArduPilot and/or PX4
 script — it prints what it's doing at each step.
 
 ```bash
+# Make the script executable (one-time — needed after a fresh clone)
+chmod +x scripts/setup_sims.sh
+
 # Install BOTH simulators (default). Everything lands under ./sims/ inside the
 # repo, so the whole install is self-contained and removed by `rm -rf sims`.
 ./scripts/setup_sims.sh
@@ -195,10 +198,6 @@ repos' own setup scripts (ArduPilot's `install-prereqs-ubuntu.sh` and PX4's
 wrap the whole script in `sudo` (`sudo ./scripts/...`): it would run `uv`/builds
 as root and break the project venv. The first build downloads a compiler
 toolchain and is slow (20–60 min); later pipeline runs reuse the binaries.
-
-> **`权限不够` / permission denied?** The script needs its executable bit. If
-> your clone lost it, run `chmod +x scripts/setup_sims.sh` first, or invoke it
-> as `bash scripts/setup_sims.sh`.
 
 > **Custom locations?** Override with env vars (absolute paths):
 > ```bash
