@@ -134,6 +134,7 @@ class SimManager(object):
 
             self._sitl_task = pexpect.spawn(cmd, cwd=toolConfig.PX4_RUN_PATH, timeout=30, encoding='utf-8')
         logger.info(f"Start {toolConfig.MODE} --> [{toolConfig.SIM}]")
+        logger.debug(f"  cmd: {cmd[:120]}...")
         if cmd is None:
             raise ValueError('Not support mode or simulator')
 
@@ -317,24 +318,36 @@ class GaSimManager(SimManager):
         """
         from icsearcher.anomaly import build_detector, PASS
 
-        logger.info('Start error monitor.')
+        logger.info('Starting flight monitor (checking for anomalies...).')
         detector = build_detector(toolConfig.mission_file())
+        loop_count = 0
 
         while True:
+            loop_count += 1
             if toolConfig.MODE == "PX4":
                 self.mav_monitor.gcs_msg_request()
             status_message = self.mav_monitor.get_msg(["STATUSTEXT"])
             position_msg = self.mav_monitor.get_msg(["GLOBAL_POSITION_INT", "MISSION_CURRENT"])
+
+            if status_message:
+                logger.debug(f"STATUSTEXT: {status_message.get_type()} sev={status_message.severity}")
+            if position_msg:
+                ptype = position_msg.get_type()
+                if ptype == "MISSION_CURRENT":
+                    logger.debug(f"MISSION_CURRENT seq={position_msg.seq}")
+                elif ptype == "GLOBAL_POSITION_INT":
+                    logger.debug(f"POSITION lat={position_msg.lat} lon={position_msg.lon} alt={position_msg.relative_alt}")
 
             detector.on_status(status_message)
             detector.on_mission_current(position_msg)
             detector.on_position(position_msg)
 
             if detector.result is not None:
-                # The "landed" pass case breaks the loop (legacy behavior); the
-                # failure outcomes also break. Either way, surface the result.
                 break
             if detector.timed_out():
                 break
+
+            if loop_count % 100 == 0:
+                logger.debug(f"Monitor alive — {loop_count} cycles, current result: {detector.result}")
 
         return detector.result if detector.result is not None else PASS

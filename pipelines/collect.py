@@ -38,6 +38,8 @@ def main():
     manager = GaSimManager(debug=toolConfig.DEBUG)
     mavlink_cls = GaMavlinkPX4 if toolConfig.MODE == "PX4" else GaMavlinkAPM
     mission = toolConfig.mission_file()
+    logger.info(f"mode={toolConfig.MODE}  mission={mission}  target={TARGET_LOGS} logs")
+    logger.info(f"SITL={toolConfig.SITL_PATH}  SIM={toolConfig.SIM}")
 
     sleep(1)
     while _count_logs() < TARGET_LOGS:
@@ -50,24 +52,42 @@ def main():
                 f"collecting {collected}/{TARGET_LOGS} ({progress:.1f}%)"
             )
 
+            logger.info("Starting SITL...")
             manager.start_sitl()
+            logger.info("Initializing MAVLink monitor...")
             manager.mav_monitor_init(mavlink_cls, 0)
+
+            logger.info("Connecting to drone...")
+            if not manager.mav_monitor_connect():
+                logger.warning("Connection failed, restarting SITL.")
+                manager.stop_sitl()
+                continue
+
+            logger.info(f"Uploading mission: {mission}")
             manager.mav_monitor.set_mission(mission, False)
-            # PX4 needs a moment for params to settle before arming.
             if toolConfig.MODE == "PX4":
+                logger.debug("Waiting 2s for PX4 params to settle...")
                 sleep(2)
+
+            logger.info("Setting random params and arming...")
             manager.mav_monitor.set_random_param_and_start()
+
+            logger.info("Waiting for flight to complete...")
             result = manager.mav_monitor.wait_complete()
+            logger.info(f"Flight result: {result}")
+
             manager.stop_sitl()
 
             if not result:
-                # Roll back the half-written log from a failed flight.
+                logger.info("Flight failed, rolling back log...")
                 if toolConfig.MODE == "PX4":
                     GaMavlinkPX4.delete_current_log()
                 else:
                     GaMavlinkAPM.delete_current_log()
+            else:
+                logger.info("Flight OK, log kept.")
         except Exception as e:
-            logger.warning(e)
+            logger.warning(f"Unexpected error: {e}")
             continue
 
 

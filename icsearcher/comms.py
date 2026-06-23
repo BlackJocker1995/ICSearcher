@@ -152,7 +152,7 @@ class DroneMavlink:
             self._master.arducopter_arm()
             self._master.set_mode_auto()
 
-        logger.info('Try to arm and start.')
+        logger.info('Armed, mission started.')
 
     def set_param(self, param: str, value: float) -> None:
         """
@@ -235,6 +235,7 @@ class DroneMavlink:
     # Special operation
     def set_random_param_and_start(self):
         param_configuration = self.create_random_params(toolConfig.PARAM)
+        logger.info(f"Setting {len(param_configuration)} random params and arming...")
         self.set_params(param_configuration)
         # Unlock the uav
         self.start_mission()

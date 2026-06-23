@@ -44,8 +44,14 @@ def setup_logging(debug: bool = False, log_file=None) -> None:
 
     Args:
         debug: When True the stderr sink runs at DEBUG, otherwise INFO.
+            Overridden by the ``ICSEARCHER_DEBUG`` env var (``1`` / ``true``)
+            so users can enable debug without editing config.
         log_file: Optional path to also mirror records into a rotating file.
     """
+    # Prefer the env var as a quick toggle without touching config.yaml.
+    env_debug = os.environ.get("ICSEARCHER_DEBUG", "").lower() in ("1", "true", "yes")
+    if env_debug:
+        debug = True
     logger.remove()
     level = "DEBUG" if debug else "INFO"
     logger.add(
