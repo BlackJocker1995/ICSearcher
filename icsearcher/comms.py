@@ -27,21 +27,23 @@ def _convert_log_chunk(args):
 
     Must be top-level (picklable) — it cannot be a bound method. Reads the
     firmware mode from the spawned process's config (driven by ICSEARCHER_MODE,
-    since toolConfig is frozen at import). Each log is parsed by the per-firmware
-    extract_log_file and written to <log_path>/csv/<name>.csv.
+    since toolConfig is frozen at import). Each raw log in ``in_path`` is parsed
+    by the per-firmware extract_log_file and written to ``out_path/csv/<name>.csv``.
+    Input and output are separate because the raw-log dir (e.g. ``logs/``) and
+    the converted-CSV dir (e.g. ``logs/bin_regular/``) live at different levels.
     """
-    log_path, file_list, skip, mode = args
+    in_path, out_path, file_list, skip, mode = args
     # Re-derive the config for the worker process so it picks up ICSEARCHER_MODE.
     from icsearcher.config import ToolConfig
     cfg = ToolConfig(mode=mode)
     extractor = GaMavlinkPX4.extract_log_file if cfg.MODE == "PX4" else GaMavlinkAPM.extract_log_file
     for file in tqdm(file_list):
         name, _ = file.split('.')
-        if skip and os.path.exists(f'{log_path}/csv/{name}.csv'):
+        if skip and os.path.exists(f'{out_path}/csv/{name}.csv'):
             continue
         try:
-            csv_data = extractor(log_path + f'/{file}')
-            csv_data.to_csv(f'{log_path}/csv/{name}.csv', index=False)
+            csv_data = extractor(in_path + f'/{file}')
+            csv_data.to_csv(f'{out_path}/csv/{name}.csv', index=False)
         except Exception as e:
             logger.warning(f"Error processing {file} : {e}")
             continue
@@ -312,28 +314,35 @@ class DroneMavlink:
         return loader
 
     @staticmethod
-    def extract_log_path(log_path, skip=True, threat=None):
+    def extract_log_path(in_path, out_path=None, skip=True, threat=None):
         """Extract and convert raw flight logs (.BIN / .ulg) to CSV.
 
         Args:
-            log_path: directory holding the raw logs.
+            in_path: directory holding the raw logs (read from here).
+            out_path: directory whose ``csv/`` subdir receives the converted
+                CSVs (defaults to ``in_path`` for backward compatibility).
+                Kept separate from ``in_path`` because raw logs and converted
+                CSVs live at different tree levels (e.g. ``logs/`` vs
+                ``logs/bin_regular/``).
             skip: if True, skip logs whose CSV already exists.
             threat: number of parallel worker processes (None = serial).
         """
+        if out_path is None:
+            out_path = in_path
         if toolConfig.MODE == "PX4":
-            file_list = read_path_specified_file(log_path, 'ulg')
+            file_list = read_path_specified_file(in_path, 'ulg')
         else:
-            file_list = read_path_specified_file(log_path, 'BIN')
-        os.makedirs(f"{log_path}/csv", exist_ok=True)
+            file_list = read_path_specified_file(in_path, 'BIN')
+        os.makedirs(f"{out_path}/csv", exist_ok=True)
 
         if threat is not None:
             # Parallel conversion via ProcessPoolExecutor (replaces Ray).
             chunks = [c for c in np.array_split(file_list, threat) if len(c)]
-            args = [(log_path, list(chunk), skip, toolConfig.MODE) for chunk in chunks]
+            args = [(in_path, out_path, list(chunk), skip, toolConfig.MODE) for chunk in chunks]
             with ProcessPoolExecutor(max_workers=threat) as pool:
                 list(pool.map(_convert_log_chunk, args))
         else:
-            _convert_log_chunk((log_path, list(file_list), skip, toolConfig.MODE))
+            _convert_log_chunk((in_path, out_path, list(file_list), skip, toolConfig.MODE))
 
 
 class GaMavlinkAPM(DroneMavlink, multiprocessing.Process):

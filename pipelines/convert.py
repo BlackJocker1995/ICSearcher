@@ -9,11 +9,21 @@ from icsearcher.comms import GaMavlinkAPM, GaMavlinkPX4
 
 def main():
     if toolConfig.MODE == "PX4":
-        # PX4: parallel-convert the newest .ulg log set (6 workers).
-        GaMavlinkPX4.extract_log_path("csv", threat=6)
+        # PX4: read raw .ulg logs (written by collect into PX4_LOG_PATH) and
+        # convert them in parallel (6 workers) into logs/ulg_changed/csv, which
+        # is where the train stage reads from.
+        GaMavlinkPX4.extract_log_path(
+            toolConfig.PX4_LOG_PATH,
+            f"{toolConfig.ARDUPILOT_LOG_PATH}/logs/ulg_changed",
+            skip=False, threat=6)
     else:
-        # ArduPilot: convert the .BIN log set into CSV.
-        GaMavlinkAPM.extract_log_path(f"{toolConfig.ARDUPILOT_LOG_PATH}/logs/bin_ga", skip=False)
+        # ArduPilot: read the raw .BIN log set (written by collect into logs/)
+        # and convert it into logs/bin_regular/csv, which is where the train
+        # stage reads from.
+        GaMavlinkAPM.extract_log_path(
+            f"{toolConfig.ARDUPILOT_LOG_PATH}/logs",
+            f"{toolConfig.ARDUPILOT_LOG_PATH}/logs/bin_regular",
+            skip=False)
 
 
 if __name__ == '__main__':
