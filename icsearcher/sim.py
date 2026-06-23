@@ -134,7 +134,7 @@ class SimManager(object):
 
             self._sitl_task = pexpect.spawn(cmd, cwd=toolConfig.PX4_RUN_PATH, timeout=30, encoding='utf-8')
         logger.info(f"Start {toolConfig.MODE} --> [{toolConfig.SIM}]")
-        logger.debug(f"  cmd: {cmd[:120]}...")
+        logger.debug(f"Full command: {cmd}")
         if self._sitl_task:
             logger.info(f"SITL process launched (PID {self._sitl_task.pid}) — waiting for MAVLink heartbeat...")
         if cmd is None:
