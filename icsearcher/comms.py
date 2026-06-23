@@ -58,15 +58,17 @@ class DroneMavlink:
     # Mavlink common operation
 
     def connect(self):
-        """
-        Connect drone
-        :return:
-        """
+        """Connect drone"""
         self._master = mavutil.mavlink_connection('udp:0.0.0.0:{}'.format(self._port))
+        logger.info(f"Listening for MAVLink heartbeat on UDP port {self._port} (timeout 30s)...")
         try:
             self._master.wait_heartbeat(timeout=30)
         except TimeoutError:
+            logger.warning(f"No heartbeat on port {self._port} after 30s — is SITL running?")
             return False
+        logger.info("Heartbeat from system (system %u component %u) from %u" % (
+            self._master.target_system, self._master.target_component, self._port))
+        return True
         logger.info("Heartbeat from system (system %u component %u) from %u" % (
             self._master.target_system, self._master.target_component, self._port))
         return True
