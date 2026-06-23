@@ -79,8 +79,6 @@ pyproject.toml            Project manifest (deps + icsearcher-* console entry po
   toolchains are Linux-centric.
 - **Python:** 3.9 – 3.11. Python 3.12 has known compatibility issues with
   ArduPilot's build system (the `imp` module was removed) and is not supported.
-- **GPU:** optional but recommended for training. The default install uses a
-  CPU PyTorch wheel; see Step 1 for the one-line CUDA swap.
 - **Simulators:** ArduPilot SITL and/or PX4-Autopilot with JMavSim. The
   bootstrap script builds them for you (see Step 2).
 
@@ -129,18 +127,10 @@ uv sync --group ardupilot
 
 This brings in the scientific stack (numpy, pandas, scipy, scikit-learn), the
 drone-comms stack (pymavlink, pyulog, pexpect), the GA engine (pymoo), the
-surrogate model backend (PyTorch, **CPU wheel from PyPI**), and dev tools
-(pytest). **PX4-only users can stop at `uv sync`.** ArduPilot users add the
-`ardupilot` group (MAVProxy, dronekit-sitl, etc.) so `sim_vehicle.py` runs
-inside the project venv — no separate system `pip install` needed.
-
-> **Want GPU training?** The default install uses the CPU PyTorch wheel. For an
-> NVIDIA GPU, install the CUDA build that matches your driver/CUDA toolkit — see
-> the official [PyTorch install guide](https://pytorch.org/get-started/locally/)
-> to pick the right command for your platform, then run it in the project venv,
-> e.g. `uv pip install torch ...` with the selector it gives you. The model
-> auto-selects the device at runtime, so application code is identical for CPU
-> and CUDA.
+surrogate model backend (PyTorch), and dev tools (pytest). **PX4-only users
+can stop at `uv sync`.** ArduPilot users add the `ardupilot` group (MAVProxy,
+dronekit-sitl, etc.) so `sim_vehicle.py` runs inside the project venv — no
+separate system `pip install` needed.
 
 > **Optional TCN backend.** A TCN surrogate (`CyTCN`) is available but no longer
 > needs an external package — it ships as a built-in `Conv1d` head in
