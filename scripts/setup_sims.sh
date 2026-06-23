@@ -77,15 +77,19 @@ die()  { printf '\n\033[1;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 # Step 0 — system build dependencies
 # ---------------------------------------------------------------------------
 install_system_deps() {
-    log "Step 0 — installing system build dependencies (needs sudo)"
-    info "ArduPilot and PX4 both need a C/C++ toolchain, cmake, and Python."
+    log "Step 0 — installing minimal system build dependencies (needs sudo)"
+    info "Just the bootstrap essentials; ArduPilot/PX4 install their own extras."
+    # Only what's needed to clone, run the firmware prereq scripts, and build
+    # any Python sdist wheels. The firmware repos' own setup scripts
+    # (install-prereqs-ubuntu.sh / ubuntu.sh) pull in cmake, ninja, the
+    # simulator libs, etc. — so we don't duplicate them here.
     sudo apt-get update -qq
     sudo apt-get install -y --no-install-recommends \
-        git python3 python3-pip python3-dev python3-venv \
-        build-essential ccache g++ gcc make cmake ninja-build \
-        genromfs dosfstools ncurses-dev libncurses-dev \
-        libtool libxml2-dev libxslt1-dev zip unzip \
-        wget curl lsb-release screen
+        git \
+        python3 python3-pip python3-dev python3-venv \
+        build-essential \
+        ccache \
+        wget curl
     ok "system packages installed"
 }
 
