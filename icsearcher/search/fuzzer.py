@@ -109,31 +109,28 @@ def random_choice_hierarchical(segment_csv, rate=0.5):
 
 
 def run_fuzzing(np_data, num=0):
-    """
-    Start Fuzzing
-    :param num: The number of data to join cluster
-    :return:
-    """
+    """Start surrogate-guided fuzzing over flight-context segments.
 
+    Args:
+        np_data: held-out raw test segments (from stage 2 raw_split).
+        num: if non-zero, randomly subsample this many segments before clustering.
+    """
     predictor = CyLSTM(100, 100, toolConfig.DEBUG)
     predictor.read_model()
 
     gaOptimizer = GAOptimizer()
-    gaOptimizer.set_bounds()
     gaOptimizer.set_predictor(predictor)
 
     segment_csv = np_data
-    # meanshift cluster
     if num != 0:
-        # Random select
         index = np.random.choice(np.arange(segment_csv.shape[0]), num)
         segment_csv = segment_csv[index, :, :]
     segment_csv = random_choice_dbscan(segment_csv, eps=0.4)
 
-    obj_population = []  # 种群
+    obj_population = []  # one PopulationResult per flight context
 
     for i, context in enumerate(segment_csv):
-        # Pre process
+        # Pre-process: append a zeroed param block and reframe to supervised form.
         context = np.c_[context, np.zeros((context.shape[0], len(toolConfig.PARAM)))]
         context = Modeling.series_to_supervised(context, toolConfig.INPUT_LEN, toolConfig.OUTPUT_LEN).values
 
@@ -146,111 +143,71 @@ def run_fuzzing(np_data, num=0):
         pickle.dump(obj_population, f)
 
 
+def _load_populations():
+    """Load the per-context populations written by run_fuzzing."""
+    with open(f'result/{toolConfig.MODE}/pop{toolConfig.EXE}.pkl', 'rb') as f:
+        return pickle.load(f)
+
+
 def return_best_n_gen(n=1):
-    candidate_vars = []
-    candidate_objs = []
+    """Return the n best (var, obj) candidates across all contexts.
 
-    with open(f'result/{toolConfig.MODE}/pop{toolConfig.EXE}.pkl', 'rb') as f:
-        obj_populations = pickle.load(f)
-    for pop in obj_populations:
-        pop_v = pop.ObjV
-        pop_p = pop.Phen
-
-        candidate_var_index = np.unique(pop_p, axis=0, return_index=True)[1]
-
-        pop_v = pop_v[candidate_var_index]
-        pop_p = pop_p[candidate_var_index]
-
-        candidate = [-1] * pop_v
-
-        candidate_index = np.argsort(candidate.reshape(-1))
-        pop_v = pop_v[candidate_index].reshape((-1, 1))
-        pop_p = pop_p[candidate_index].reshape((-1, 20))
-
-        if n != 0:
-            candidate_var = pop_v[:min(n, len(pop_v))]
-            candidate_obj = pop_p[:min(n, len(pop_p))]
-        candidate_obj = ProblemGA.reasonable_range_static(candidate_obj)
-
-        candidate_vars.extend(candidate_var)
-        candidate_objs.extend(candidate_obj)
-
-    return candidate_vars, candidate_objs
+    ``ObjV`` holds the negated deviation (minimize), so ascending order is
+    best-first. Returns (candidate_vars, candidate_objs) where objs are the
+    step-scaled original-unit params.
+    """
+    candidate_vars, candidate_objs = [], []
+    for pop in _load_populations():
+        pop_v, pop_p = pop.ObjV, pop.Phen
+        unique = np.unique(pop_p, axis=0, return_index=True)[1]
+        pop_v, pop_p = pop_v[unique], pop_p[unique]
+        order = np.argsort(pop_v.reshape(-1))
+        pop_v, pop_p = pop_v[order], pop_p[order]
+        k = min(n, len(pop_v)) if n else len(pop_v)
+        candidate_vars.extend(pop_v[:k])
+        candidate_objs.extend(ProblemGA.reasonable_range_static(pop_p[:k]))
+    return np.array(candidate_vars).astype(float), np.array(candidate_objs).astype(float)
 
 
-def return_random_n_gen(n=1):
-    candidate_vars = []
-    candidate_objs = []
-
-    with open(f'result/{toolConfig.MODE}/pop{toolConfig.EXE}.pkl', 'rb') as f:
-        obj_populations = pickle.load(f)
-    for pop in obj_populations:
-        pop_v = pop.ObjV
-        pop_p = pop.Phen
-        # Unique
-        candidate_var_index = np.unique(pop_p, axis=0, return_index=True)[1]
-        # Choice
-        pop_v = pop_v[candidate_var_index]
-        pop_p = pop_p[candidate_var_index]
-        #
-        candidate = [-1] * pop_v
-        # Sort
-        candidate_index = np.argsort(candidate.reshape(-1))
-        pop_v = pop_v[candidate_index].reshape((-1, 1))
-        pop_p = pop_p[candidate_index].reshape((-1, 20))
-        #
-        if n != 0:
-            candidate_var = pop_v[[1, 200, 500]]
-            candidate_obj = pop_p[[1, 200, 500], :]
-        candidate_obj = ProblemGA.reasonable_range_static(candidate_obj)
-
-        candidate_vars.extend(candidate_var)
-        candidate_objs.extend(candidate_obj)
-    return candidate_vars, candidate_objs
+def return_random_n_gen(n=3):
+    """Return a few randomly-positioned candidates per context."""
+    candidate_vars, candidate_objs = [], []
+    for pop in _load_populations():
+        pop_v, pop_p = pop.ObjV, pop.Phen
+        unique = np.unique(pop_p, axis=0, return_index=True)[1]
+        pop_v, pop_p = pop_v[unique], pop_p[unique]
+        m = len(pop_v)
+        if m == 0:
+            continue
+        picks = np.random.choice(np.arange(m), size=min(n, m), replace=False)
+        candidate_vars.extend(pop_v[picks])
+        candidate_objs.extend(ProblemGA.reasonable_range_static(pop_p[picks]))
+    return np.array(candidate_vars).astype(float), np.array(candidate_objs).astype(float)
 
 
 def return_cluster_thres_gen(thres=0.4):
-    candidate_vars = []
-    candidate_objs = []
+    """Cluster each context's population and sample diverse candidates.
 
-    with open(f'result/{toolConfig.MODE}/pop{toolConfig.EXE}.pkl', 'rb') as f:
-        obj_populations = pickle.load(f)
-    for pop in obj_populations:
-        pop_v = pop.ObjV
-        pop_p = pop.Phen
-        # Unique
-        candidate_var_index = np.unique(pop_p, axis=0, return_index=True)[1]
-        # Choice
-        pop_v = pop_v[candidate_var_index]
-        pop_p = pop_p[candidate_var_index]
+    This is the selector used by ``pipelines/4_validate.py pre``. Each context's
+    step-scaled, normalized population is hierarchically clustered at ``thres``;
+    up to ``CLUSTER_CHOICE_NUM`` candidates per cluster are kept.
+    """
+    candidate_vars, candidate_objs = [], []
+    for pop in _load_populations():
+        pop_v, pop_p = pop.ObjV, pop.Phen
+        unique = np.unique(pop_p, axis=0, return_index=True)[1]
+        pop_v, pop_p = pop_v[unique], pop_p[unique]
 
-        # To normal value
         normal_pop_p = ProblemGA.reasonable_range_static(pop_p)
         normalize_pop_p = min_max_scaler_param(normal_pop_p)
 
         predicted = hcluster.fclusterdata(normalize_pop_p, thres, criterion="distance")
-        # ------------- draw ------------------#
-        # c = list(map(lambda x: color(tuple(x)), ncolors(max(predicted) + 1)))
-        #
-        # colors = [c[i] for i in predicted]
-        #
-        # pca = PCA(n_components=2, svd_solver='arpack')
-        # show = pca.fit_transform(pop_p)
-        #
-        # fig = plt.figure()
-        # # ax = fig.add_subplot(111, projection='3d')
-        # # ax.scatter(show[:, 0], show[:, 1], show[:, 2], c=colors, s=5)
-        # plt.scatter(show[:, 0], show[:, 1], c=colors, s=5)
-        #
-        # plt.show()
-        # -------------------------
         for i in range(max(predicted)):
             index = np.where(predicted == i)[0]
             col_index = np.random.choice(index, min(index.shape[0], toolConfig.CLUSTER_CHOICE_NUM))
             if len(col_index) > 0:
                 candidate_vars.extend(pop_v[col_index])
                 candidate_objs.extend(normal_pop_p[col_index])
-    # Array
     candidate_objs = np.array(candidate_objs).astype(float)
     candidate_vars = np.array(candidate_vars).astype(float)
     return candidate_vars, candidate_objs
@@ -262,11 +219,10 @@ def reshow(params, values):
     manager.mav_monitor_init()
 
     manager.mav_monitor_connect()
-    manager.mav_monitor_set_mission(toolConfig.resolve("Cptool/mission.txt"), random=True)
+    manager.mav_monitor_set_mission(toolConfig.resolve("data/mission.txt"), random=True)
 
     manager.mav_monitor_set_param(params=params, values=values)
 
-    # manager.start_mav_monitor()
     manager.mav_monitor_start_mission()
     result = manager.mav_monitor_error()
 

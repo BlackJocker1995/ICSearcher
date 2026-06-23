@@ -8,7 +8,7 @@ import pytest
 
 # Heavy deps behind these modules are only present after the full Poetry
 # environment is installed. Skip gracefully in a minimal environment.
-pytest.importorskip("geatpy")
+pytest.importorskip("pymoo")
 pytest.importorskip("pymavlink")
 
 

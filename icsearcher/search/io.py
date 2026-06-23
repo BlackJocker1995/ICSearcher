@@ -21,10 +21,17 @@ from icsearcher.config import toolConfig
 class CandidateSet:
     """A flat set of fuzzing candidates selected for validation.
 
+    Note on naming: despite the field names, ``obj`` holds the **parameter
+    vectors** (the configs to validate) and ``var`` holds the **objective
+    scores** (the predicted deviation). This odd naming is inherited from the
+    legacy ``[obj, var]`` pickle order; it is consistent end-to-end because both
+    the writer (``4_validate.pre``) and reader (``4_validate.validate``) use the
+    same convention: ``candidates.obj`` is iterated as the param config
+    (``value_vector``) and ``candidates.var`` as the score (``vars[0]``).
+
     Attributes:
-        obj: objective values, shape (n_candidates, 1) — the predicted deviation.
-        var: decision variables, shape (n_candidates, n_params) — the param
-            vectors in their original (un-scaled) units.
+        obj: parameter vectors, shape (n_candidates, n_params) — original units.
+        var: objective scores, shape (n_candidates, 1) — negated deviation.
     """
     obj: np.ndarray
     var: np.ndarray

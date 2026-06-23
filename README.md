@@ -13,6 +13,9 @@ ICSearcher is an improved version of LGDFuzzer.
 - Stage-2 refactor: packages renamed to `icsearcher/`, the `_px4` script twins
   merged into 6 unified `pipelines/` scripts, `toolConfig` frozen at load time
   (mode from yaml / `ICSEARCHER_MODE` env var; no runtime `select_mode`).
+- Stage-3 refactor: GA engine migrated from geatpy to pymoo (differential
+  evolution for fuzzing, NSGA-II for range derivation, built-in GD/IGD/HV/Spacing
+  indicators). geatpy removed.
 
 ## Requirement
 OS: Ubuntu 20.04 / 22.04 (recommend). Python >= 3.9.
@@ -27,12 +30,10 @@ poetry install
 
 > CUDA: `pyproject.toml` pins PyTorch to the `cu121` wheel index. If your driver
 > needs a different CUDA toolkit, edit the `[[tool.poetry.source]]` block
-> (`cu118` / `cu124`). `pymoo` (the stage-3 GA engine) is already listed so the
-> environment is ready when that stage lands.
+> (`cu118` / `cu124`).
 
 Python packages used: numpy, pandas, scipy, scikit-learn, pymavlink, pyulog,
-keras/tensorflow, geatpy (GA, legacy), pymoo (GA, target), loguru, pyyaml,
-tqdm, torch (CUDA).
+keras/tensorflow, pymoo (GA), loguru, pyyaml, tqdm, torch (CUDA).
 
 ## Upstream simulators
 Run the bootstrap script to clone & build ArduPilot SITL and PX4-Autopilot +

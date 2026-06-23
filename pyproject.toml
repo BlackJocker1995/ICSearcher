@@ -36,11 +36,9 @@ pymavlink = ">=2.4"
 pyulog = ">=1.0"
 pexpect = ">=4.8"
 
-# GA / search. geatpy is the legacy engine (stage 1/2); pymoo is the target
-# engine for stage 3 (NSGA-II range search + differential-evolution fuzzing,
-# with built-in GD/IGD/HV/Spacing indicators). Both listed now so the env is
-# ready when stage 3 lands; geatpy is removed once the migration completes.
-geatpy = ">=2.7"
+# GA / search. pymoo is the engine for both fuzzing (differential evolution)
+# and range derivation (NSGA-II), with built-in GD/IGD/HV/Spacing indicators.
+# geatpy (the legacy engine) was removed in stage 3.
 pymoo = ">=0.6"
 
 # Surrogate model (kept in stage 1; migrated to PyTorch in stage 4).
