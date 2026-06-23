@@ -134,15 +134,12 @@ surrogate model backend (PyTorch, **CPU wheel from PyPI**), and dev tools
 inside the project venv — no separate system `pip install` needed.
 
 > **Want GPU training?** The default install uses the CPU PyTorch wheel. For an
-> NVIDIA GPU, swap in the CUDA wheel after syncing (uv's single-manifest source
-> routing can't pick a CUDA build cleanly, so this is a manual one-liner):
-> ```bash
-> uv sync
-> uv pip install torch --index-url https://download.pytorch.org/whl/cu121
-> ```
-> For a different CUDA toolkit, change the `cu121` suffix (`cu118` / `cu124`).
-> The model auto-selects the device at runtime, so application code is identical
-> for CPU and CUDA.
+> NVIDIA GPU, install the CUDA build that matches your driver/CUDA toolkit — see
+> the official [PyTorch install guide](https://pytorch.org/get-started/locally/)
+> to pick the right command for your platform, then run it in the project venv,
+> e.g. `uv pip install torch ...` with the selector it gives you. The model
+> auto-selects the device at runtime, so application code is identical for CPU
+> and CUDA.
 
 > **Optional TCN backend.** A TCN surrogate (`CyTCN`) is available but no longer
 > needs an external package — it ships as a built-in `Conv1d` head in
