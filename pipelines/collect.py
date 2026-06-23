@@ -5,7 +5,7 @@ Unified over ArduPilot / PX4: the firmware is chosen by ``data/config.yaml``'s
 on a failed flight differs per firmware.
 """
 import os
-import time
+from time import sleep
 from datetime import datetime
 
 from loguru import logger
@@ -39,10 +39,10 @@ def main():
     mavlink_cls = GaMavlinkPX4 if toolConfig.MODE == "PX4" else GaMavlinkAPM
     mission = toolConfig.mission_file()
 
-    time.sleep(1)
+    sleep(1)
     while _count_logs() < TARGET_LOGS:
         try:
-            time.sleep(0.5)
+            sleep(0.5)
             collected = _count_logs()
             progress = collected / TARGET_LOGS * 100
             logger.info(
@@ -55,7 +55,7 @@ def main():
             manager.mav_monitor.set_mission(mission, False)
             # PX4 needs a moment for params to settle before arming.
             if toolConfig.MODE == "PX4":
-                time.sleep(2)
+                sleep(2)
             manager.mav_monitor.set_random_param_and_start()
             result = manager.mav_monitor.wait_complete()
             manager.stop_sitl()
