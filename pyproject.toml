@@ -58,6 +58,7 @@ ardupilot = [
     "dronekit>=2.9",
     "dronekit-sitl>=3.3",
     "future>=1.0",
+    "empy==3.3.4",
 ]
 
 # Tell hatchling which packages to ship (so the entry points resolve).

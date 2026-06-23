@@ -152,6 +152,13 @@ IMPSHIM
         ok "waf patched for Python 3.12"
     fi
 
+    local sitl_bin="$ARDUPILOT_DIR/build/sitl/bin/arducopter"
+    if [[ -f "$sitl_bin" ]]; then
+        info "ArduCopter SITL already built at $sitl_bin — skipping build."
+        ok "ArduPilot SITL ready"
+        return
+    fi
+
     info "Running ArduPilot's own prerequisite installer (toolchain, etc.)"
     info "(install-prereqs-ubuntu.sh uses sudo internally and will prompt for your password)"
     if [[ -f "$ARDUPILOT_DIR/Tools/environment_install/install-prereqs-ubuntu.sh" ]]; then
@@ -185,15 +192,20 @@ install_px4() {
     git -C "$PX4_DIR" checkout "$PX4_BRANCH"
     git -C "$PX4_DIR" submodule update --init --recursive
 
-    info "Running PX4's ubuntu.sh dependency installer"
-    info "(ubuntu.sh uses sudo internally and will prompt for your password)"
-    bash "$PX4_DIR/Tools/setup/ubuntu.sh" || warn "ubuntu.sh reported issues; continuing."
+    local px4_bin="$PX4_DIR/build/px4_sitl_default/bin/px4"
+    if [[ -f "$px4_bin" ]]; then
+        info "PX4 SITL already built at $px4_bin — skipping build."
+    else
+        info "Running PX4's ubuntu.sh dependency installer"
+        info "(ubuntu.sh uses sudo internally and will prompt for your password)"
+        bash "$PX4_DIR/Tools/setup/ubuntu.sh" || warn "ubuntu.sh reported issues; continuing."
 
-    info "Pre-building PX4 SITL + JMavSim so the first fuzzing run is fast"
-    ( cd "$PX4_DIR" && HEADLESS=1 make px4_sitl jmavsim ) || true
-    # The build spawns a jmavsim process; stop it, the binaries are already built.
-    pkill -f "jmavsim_run.sh" 2>/dev/null || true
-    pkill -f "px4 -i" 2>/dev/null || true
+        info "Pre-building PX4 SITL + JMavSim so the first fuzzing run is fast"
+        ( cd "$PX4_DIR" && HEADLESS=1 make px4_sitl jmavsim ) || true
+        # The build spawns a jmavsim process; stop it, the binaries are already built.
+        pkill -f "jmavsim_run.sh" 2>/dev/null || true
+        pkill -f "px4 -i" 2>/dev/null || true
+    fi
 
     # PX4 needs a per-instance launcher for multi-SITL validation.
     provision_px4_multi_instance_helper
