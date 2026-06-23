@@ -142,58 +142,70 @@ otherwise CPU), so the rest of the pipeline is identical for both.
 
 ### Step 2 — Provision the simulators
 
-`scripts/setup_sims.sh` clones and builds the upstream simulators, installs
-their system build dependencies, and provisions the PX4 multi-instance helper
-the project relies on.
+ICSearcher fuzzes real firmware, so you need the ArduPilot and/or PX4
+**SITL** (Software-In-The-Loop) simulators built from source. The
+`scripts/setup_sims.sh` helper does all of it and is written as a teaching
+script — it prints what it's doing at each step.
 
 ```bash
-# Build both simulators into the default locations
-# (~/ardupilot and ~/PX4-Autopilot — matching data/config.yaml)
+# Install BOTH simulators (default). Everything lands under ./sims/ inside the
+# repo, so the whole install is self-contained and removed by `rm -rf sims`.
 ./scripts/setup_sims.sh
 
-# Or build only one
+# Or install only one firmware
 ./scripts/setup_sims.sh --ardupilot
 ./scripts/setup_sims.sh --px4
 ```
 
-Override the install locations with environment variables (absolute paths):
+**What it installs** (all under the repository, ~10 GB):
 
-```bash
-ARDUPILOT_DIR=/opt/ardupilot PX4_DIR=/opt/PX4-Autopilot ./scripts/setup_sims.sh
+```
+ICSearcher/
+├── sims/                         created by the script
+│   ├── ardupilot/                cloned from github.com/ardupilot/ardupilot
+│   ├── PX4-Autopilot/            cloned from github.com/PX4/PX4-Autopilot
+│   └── data/                     flight logs (.BIN / .ulg) live here
+├── data/config.yaml              the script rewrites 'paths:' to match
+└── ...
 ```
 
-What the script does, per simulator:
+The script:
 
-- **ArduPilot** — clones `ArduPilot/ardupilot` at a stable `Copter-*` tag,
-  refreshes submodules, runs `install-prereqs-ubuntu.sh`, installs
-  `pymavlink`/`MAVProxy`/`dronekit-sitl`, and builds the ArduCopter SITL once.
-- **PX4** — clones `PX4/PX4-Autopilot` at a stable release, runs `ubuntu.sh`,
-  builds `px4_sitl jmavsim`, and writes `Tools/sitl_multiple_run_single.sh`
-  (used by multi-instance validation).
+1. **Installs system build deps** (toolchain, cmake, python) via apt.
+2. **ArduPilot** — clones `github.com/ardupilot/ardupilot` at a stable
+   `Copter-*` tag, runs its `install-prereqs-ubuntu.sh`, and builds the
+   ArduCopter SITL once.
+3. **PX4** — clones `github.com/PX4/PX4-Autopilot` at a stable release, runs
+   its `ubuntu.sh`, builds `px4_sitl jmavsim`, and writes the
+   `sitl_multiple_run_single.sh` launcher that multi-instance validation uses.
+4. **Creates the log storage dir** (`sims/data/logs/`, with the ArduPilot
+   `LASTLOG.TXT` index seeded) so the collect stage works on the first run.
+5. **Rewrites `data/config.yaml`** so `paths:` points at `sims/ardupilot`,
+   `sims/PX4-Autopilot`, and `sims/data` — no manual editing needed.
 
-Run it once from a sudo-capable account; the first build is slow (it fetches a
-toolchain). After it finishes, the binaries remain and later pipeline runs are
-fast.
+Run it once from a sudo-capable account. The first build downloads a compiler
+toolchain and is slow (20–60 min); later pipeline runs reuse the binaries.
 
-### Step 3 — Configure the run
+> **Custom locations?** Override with env vars (absolute paths):
+> ```bash
+> SIM_ROOT=/opt/sims DATA_DIR=/var/lib/icsearcher ./scripts/setup_sims.sh
+> ```
+> **Different firmware version?**
+> ```bash
+> ARDUPILOT_BRANCH=Copter-4.5.2 PX4_BRANCH=v1.14.0 ./scripts/setup_sims.sh
+> ```
+> **Uninstall:** `rm -rf sims` removes everything the script created.
 
-All configuration lives in **`data/config.yaml`**. The most important field is
-`mode`, which selects the firmware and is **frozen at load time** (there is no
-runtime switching):
+### Step 3 — Choose the firmware (paths are auto-configured)
+
+If you ran `setup_sims.sh`, the `paths:` block in `data/config.yaml` is already
+pointed at `sims/ardupilot`, `sims/PX4-Autopilot`, and `sims/data` — no manual
+editing needed. The one thing you must still choose is the **firmware mode**,
+which selects which simulator the pipeline drives and is **frozen at load
+time** (there is no runtime switching):
 
 ```yaml
 mode: PX4          # or "Ardupilot"
-```
-
-Then point the `paths:` block at your simulator locations (the defaults match
-what `setup_sims.sh` produces):
-
-```yaml
-paths:
-  ardupilot_log: /media/rain/data                              # ArduPilot log dir
-  sitl: /home/rain/ardupilot/Tools/autotest/sim_vehicle.py     # ArduPilot SITL launcher
-  px4_run: /home/rain/PX4-Autopilot                            # PX4 source root
-  jmavsim: /home/rain/PX4-Autopilot/Tools/jmavsim_run.sh       # JMavSim launcher
 ```
 
 > **Quick mode switch without editing the file:** set the `ICSEARCHER_MODE`
@@ -202,6 +214,10 @@ paths:
 > ICSEARCHER_MODE=Ardupilot uv run icsearcher-collect
 > ```
 > Priority is: env var > `data/config.yaml`'s `mode` field.
+
+> **Installed only one firmware?** Set `mode` to whichever you built
+> (`--ardupilot` → `Ardupilot`, `--px4` → `PX4`). The other firmware's paths in
+> `config.yaml` simply stay unused.
 
 See [Configuration reference](#configuration-reference) for every field.
 

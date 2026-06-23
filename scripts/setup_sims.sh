@@ -1,209 +1,266 @@
 #!/usr/bin/env bash
 #
-# Bootstrap script: clone & build the upstream drone simulators needed by
-# ICSearcher (ArduPilot SITL and PX4-Autopilot + JMavSim), install their Python
-# dependencies, and provision the PX4 multi-instance helper that the project
-# relies on.
+# setup_sims.sh — install the drone simulators ICSearcher fuzzes against.
 #
-# Usage:
-#   scripts/setup_sims.sh                  # installs both (default paths)
-#   ARDUPILOT_DIR=/opt/ardupilot PX4_DIR=/opt/PX4-Autopilot scripts/setup_sims.sh
-#   scripts/setup_sims.sh --ardupilot      # only ArduPilot
-#   scripts/setup_sims.sh --px4            # only PX4
+# This is a teaching script: it explains every step as it goes, clones the two
+# upstream firmware repositories (ArduPilot and PX4) into the repo, builds their
+# SITL (Software-In-The-Loop) simulators, and wires up a dedicated directory
+# where simulated flight data (logs) is stored. At the end it rewrites
+# data/config.yaml so the project points at what was just installed.
 #
-# After it finishes, point Cptool/config.yaml at the chosen paths
-# (paths.sitl / paths.px4_run / paths.jmavsim) — they already match the
-# defaults below.
+# WHAT GETS INSTALLED (all under the repository, so uninstall = delete the dir):
 #
-# GUI note: PX4 SITL is launched with HEADLESS=1 by ICSearcher (no 3D window)
-# which is what you want for unattended fuzzing — the anomaly detector reads
-# flight telemetry over MAVLink, not the JMavSim window. ArduPilot SITL never
-# spawns a GUI either. If you do want the JMavSim 3D view for debugging, remove
-# HEADLESS=1 from Cptool/gaSimManager.py:start_sitl (PX4 branch).
+#   ICSearcher/
+#   ├── sims/                         SIM_ROOT (created by this script)
+#   │   ├── ardupilot/                ArduPilot SITL source + build
+#   │   ├── PX4-Autopilot/            PX4 source + build + JMavSim
+#   │   └── data/                     DATA_DIR — flight logs live here
+#   ├── data/config.yaml              rewritten with the paths above
+#   └── ...
 #
-# Tested on Ubuntu 20.04 / 22.04. Run from a sudo-capable account.
+# USAGE
+#   ./scripts/setup_sims.sh             # install BOTH simulators (default)
+#   ./scripts/setup_sims.sh --ardupilot # only ArduPilot
+#   ./scripts/setup_sims.sh --px4       # only PX4
+#
+#   # Override where things go (absolute paths recommended):
+#   SIM_ROOT=/opt/sims DATA_DIR=/var/lib/icsearcher ./scripts/setup_sims.sh
+#
+#   # Pin a different firmware version (defaults are stable tags):
+#   ARDUPILOT_BRANCH=Copter-4.5.2 PX4_BRANCH=v1.14.0 ./scripts/setup_sims.sh
+#
+# REQUIREMENTS
+#   Ubuntu 20.04 or 22.04, a sudo-capable account, ~10 GB free disk, internet.
+#   The first build downloads a compiler toolchain and is slow (20-60 min).
+#
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# Configuration (override via environment variables)
+# Configuration (every path is overridable via an env var)
 # ---------------------------------------------------------------------------
-ARDUPILOT_DIR="${ARDUPILOT_DIR:-$HOME/ardupilot}"
-PX4_DIR="${PX4_DIR:-$HOME/PX4-Autopilot}"
-ARDUPILOT_BRANCH="${ARDUPILOT_BRANCH:-Copter-4.3.4}"   # a stable ArduCopter tag
-PX4_BRANCH="${PX4_BRANCH:-v1.13.3}"                    # a stable PX4 release
-NJOBS="${NJOBS:-$(nproc)}"
-
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# What to install. Default: both. Flags narrow it.
+# SIM_ROOT: where the firmware repos live. Default: inside the repo (sims/), so
+# the whole install is self-contained and removed by `rm -rf sims`.
+SIM_ROOT="${SIM_ROOT:-$REPO_ROOT/sims}"
+ARDUPILOT_DIR="$SIM_ROOT/ardupilot"
+PX4_DIR="$SIM_ROOT/PX4-Autopilot"
+
+# DATA_DIR: where simulated flight logs are written. Default: sims/data.
+# This becomes data/config.yaml's `paths.ardupilot_log` and the parent of the
+# PX4 log path.
+DATA_DIR="${DATA_DIR:-$SIM_ROOT/data}"
+
+# Firmware versions (stable tags). Override with env vars if you need another.
+ARDUPILOT_BRANCH="${ARDUPILOT_BRANCH:-Copter-4.5.2}"
+PX4_BRANCH="${PX4_BRANCH:-v1.14.0}"
+NJOBS="${NJOBS:-$(nproc)}"
+
+# Upstream URLs (the two repos this script downloads).
+ARDUPILOT_URL="https://github.com/ardupilot/ardupilot"
+PX4_URL="https://github.com/PX4/PX4-Autopilot.git"
+
+# Which simulators to install. Default: both.
 INSTALL_ARDUPILOT=1
 INSTALL_PX4=1
 if [[ "${1:-}" == "--ardupilot" ]]; then INSTALL_PX4=0; fi
 if [[ "${1:-}" == "--px4" ]]; then INSTALL_ARDUPILOT=0; fi
 
-log()  { printf '\033[1;34m[setup]\033[0m %s\n' "$*"; }
-warn() { printf '\033[1;33m[warn]\033[0m %s\n'  "$*" >&2; }
-die()  { printf '\033[1;31m[err]\033[0m %s\n'   "$*" >&2; exit 1; }
+# Pretty logging.
+log()  { printf '\n\033[1;34m▶ %s\033[0m\n' "$*"; }
+info() { printf '  \033[0;37m%s\033[0m\n' "$*"; }
+ok()   { printf '  \033[1;32m✓ %s\033[0m\n' "$*"; }
+warn() { printf '  \033[1;33m! %s\033[0m\n' "$*" >&2; }
+die()  { printf '\n\033[1;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
-# System packages (needed by both simulators' build)
+# Step 0 — system build dependencies
 # ---------------------------------------------------------------------------
 install_system_deps() {
-    log "Installing system build dependencies (sudo required)..."
+    log "Step 0 — installing system build dependencies (needs sudo)"
+    info "ArduPilot and PX4 both need a C/C++ toolchain, cmake, and Python."
     sudo apt-get update -qq
     sudo apt-get install -y --no-install-recommends \
         git python3 python3-pip python3-dev python3-venv \
         build-essential ccache g++ gcc make cmake ninja-build \
         genromfs dosfstools ncurses-dev libncurses-dev \
         libtool libxml2-dev libxslt1-dev zip unzip \
-        wget curl lsb-release
-
-    # Tools ArduPilot's sim_vehicle.py expects to fetch/use.
-    if ! command -v screen >/dev/null 2>&1; then
-        sudo apt-get install -y screen
-    fi
+        wget curl lsb-release screen
+    ok "system packages installed"
 }
 
 # ---------------------------------------------------------------------------
-# ArduPilot SITL
+# Step 1 — ArduPilot SITL
 # ---------------------------------------------------------------------------
 install_ardupilot() {
-    log "Installing ArduPilot SITL into: $ARDUPILOT_DIR"
+    log "Step A — ArduPilot SITL  →  $ARDUPILOT_DIR"
+    info "Cloning $ARDUPILOT_URL (branch $ARDUPILOT_BRANCH)"
 
     if [[ ! -d "$ARDUPILOT_DIR/.git" ]]; then
-        git clone --recurse-submodules https://github.com/ArduPilot/ardupilot.git "$ARDUPILOT_DIR"
+        git clone --recurse-submodules "$ARDUPILOT_URL" "$ARDUPILOT_DIR"
     else
-        warn "ArduPilot already cloned at $ARDUPILOT_DIR; fetching latest."
-        git -C "$ARDUPILOT_DIR" fetch --all --tags
+        warn "$ARDUPILOT_DIR already exists; reusing and refreshing submodules."
     fi
-
     git -C "$ARDUPILOT_DIR" checkout "$ARDUPILOT_BRANCH"
-    # Refresh submodules for this branch.
     git -C "$ARDUPILOT_DIR" submodule update --init --recursive
 
-    log "Installing ArduPilot Python tooling (pymavlink, MAVProxy, dronekit-sitl)..."
-    # sim_vehicle.py relies on these; install into user site to avoid PEP 668.
-    pip3 install --user --upgrade \
-        pymavlink MAVProxy dronekit dronekit-sitl future lxml pymavlink
-
-    log "Building ArduCopter SITL (first run downloads the toolchain; this is slow)..."
-    # Tools/environment_install/install-prereqs-ubuntu.sh provisions the
-    # arm-none-eabi toolchain and other deps; safe to re-run.
+    info "Running ArduPilot's own prerequisite installer (toolchain, etc.)"
     if [[ -f "$ARDUPILOT_DIR/Tools/environment_install/install-prereqs-ubuntu.sh" ]]; then
-        bash "$ARDUPILOT_DIR/Tools/environment_install/install-prereqs-ubuntu.sh -y" || true
+        bash "$ARDUPILOT_DIR/Tools/environment_install/install-prereqs-ubuntu.sh" -y || true
     fi
 
-    cd "$ARDUPILOT_DIR"
-    # --no-mission downloads a default parameter set; building once primes the
-    # binary so later collect/validate runs are fast.
-    python3 "Tools/autotest/sim_vehicle.py" -v ArduCopter -w --no-mission -j"$NJOBS"
-    cd "$REPO_ROOT"
+    info "Installing ArduPilot's Python tools (pymavlink, MAVProxy, dronekit-sitl)"
+    pip3 install --user --upgrade --break-system-packages \
+        pymavlink MAVProxy dronekit dronekit-sitl future lxml || \
+        pip3 install --user --upgrade pymavlink MAVProxy dronekit dronekit-sitl future lxml
 
-    log "ArduPilot SITL ready."
-    log "  SITL script: $ARDUPILOT_DIR/Tools/autotest/sim_vehicle.py"
+    info "Building ArduCopter SITL — first build downloads a toolchain (slow)"
+    ( cd "$ARDUPILOT_DIR" && \
+      python3 "Tools/autotest/sim_vehicle.py" -v ArduCopter -w --no-mission -j"$NJOBS" )
+
+    ok "ArduPilot SITL ready: $ARDUPILOT_DIR/Tools/autotest/sim_vehicle.py"
 }
 
 # ---------------------------------------------------------------------------
-# PX4-Autopilot + JMavSim
+# Step 2 — PX4-Autopilot + JMavSim
 # ---------------------------------------------------------------------------
 install_px4() {
-    log "Installing PX4-Autopilot into: $PX4_DIR"
+    log "Step B — PX4-Autopilot + JMavSim  →  $PX4_DIR"
+    info "Cloning $PX4_URL (tag $PX4_BRANCH)"
 
     if [[ ! -d "$PX4_DIR/.git" ]]; then
-        git clone --recursive https://github.com/PX4/PX4-Autopilot.git "$PX4_DIR"
+        git clone --recursive "$PX4_URL" "$PX4_DIR"
     else
-        warn "PX4 already cloned at $PX4_DIR; fetching latest."
-        git -C "$PX4_DIR" fetch --all --tags
+        warn "$PX4_DIR already exists; reusing and refreshing submodules."
     fi
-
     git -C "$PX4_DIR" checkout "$PX4_BRANCH"
     git -C "$PX4_DIR" submodule update --init --recursive
 
-    log "Running PX4 ubuntu.sh dependency installer (sudo required)..."
+    info "Running PX4's ubuntu.sh dependency installer (needs sudo)"
     bash "$PX4_DIR/Tools/setup/ubuntu.sh" || warn "ubuntu.sh reported issues; continuing."
 
-    log "Building PX4 SITL with JMavSim (HEADLESS build to avoid GUI at runtime)..."
-    cd "$PX4_DIR"
-    # Pre-build so the first mission does not pay the compile cost. JMavSim is
-    # built as part of `make px4_sitl jmavsim`. We run it headless briefly then
-    # it is killed; the binaries remain.
-    HEADLESS=1 make px4_sitl jmavsim || true
-    # Kill any lingering jmavsim/px4 the build spawned.
+    info "Pre-building PX4 SITL + JMavSim so the first fuzzing run is fast"
+    ( cd "$PX4_DIR" && HEADLESS=1 make px4_sitl jmavsim ) || true
+    # The build spawns a jmavsim process; stop it, the binaries are already built.
     pkill -f "jmavsim_run.sh" 2>/dev/null || true
     pkill -f "px4 -i" 2>/dev/null || true
-    cd "$REPO_ROOT"
 
-    # Provision the PX4 multi-instance helper the project depends on for
-    # `start_multiple_sitl`. (See README "run PX4 evaluation in multiple thread".)
+    # PX4 needs a per-instance launcher for multi-SITL validation.
     provision_px4_multi_instance_helper
 
-    log "PX4 SITL ready."
-    log "  PX4 root:     $PX4_DIR"
-    log "  JMavSim:       $PX4_DIR/Tools/jmavsim_run.sh"
+    ok "PX4 SITL ready: $PX4_DIR (JMavSim: $PX4_DIR/Tools/jmavsim_run.sh)"
 }
 
 provision_px4_multi_instance_helper() {
+    # ICSearcher's multi-instance validation calls Tools/sitl_multiple_run_single.sh,
+    # which upstream no longer ships. Recreate it so `--device N` works out of the box.
     local target="$PX4_DIR/Tools/sitl_multiple_run_single.sh"
-    log "Provisioning PX4 multi-instance helper: $target"
+    info "Writing PX4 multi-instance launcher: $target"
     cat > "$target" <<'HELPER'
 #!/bin/bash
-# Launch a single PX4 SITL instance by index. Created by ICSearcher setup.
+# Launch a single PX4 SITL instance by index. Created by ICSearcher's setup_sims.sh.
 sitl_num=0
 [ -n "$1" ] && sitl_num="$1"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-src_path="$SCRIPT_DIR/.."
-build_path=${src_path}/build/px4_sitl_default
+build_path="${SCRIPT_DIR}/../build/px4_sitl_default"
 pkill -f "px4 -i $sitl_num" 2>/dev/null || true
 sleep 1
 export PX4_SIM_MODEL=iris
 working_dir="$build_path/instance_$sitl_num"
-[ ! -d "$working_dir" ] && mkdir -p "$working_dir"
-pushd "$working_dir" &>/dev/null
-echo "starting instance $sitl_num in $(pwd)"
-"../bin/px4" -i "$sitl_num" -d "$build_path/etc" -s etc/init.d-posix/rcS
-popd &>/dev/null
+mkdir -p "$working_dir"
+cd "$working_dir"
+echo "starting PX4 SITL instance $sitl_num in $(pwd)"
+"$build_path/bin/px4" -i "$sitl_num" -d "$build_path/etc" -s etc/init.d-posix/rcS
 HELPER
     chmod +x "$target"
 }
 
 # ---------------------------------------------------------------------------
-# Python project deps (Poetry)
+# Step 3 — data storage directory + wire up config.yaml
 # ---------------------------------------------------------------------------
-install_python_deps() {
-    log "Installing ICSearcher Python dependencies via Poetry..."
-    if ! command -v poetry >/dev/null 2>&1; then
-        warn "Poetry not found; installing it for the current user."
-        curl -sSL https://install.python-poetry.org | python3 -
-        export PATH="$HOME/.local/bin:$PATH"
+setup_data_dir() {
+    log "Step C — flight-log storage  →  $DATA_DIR"
+    info "All simulated flight logs (.BIN / .ulg) and the ArduPilot LASTLOG.TXT"
+    info "index live here. Keeping them under SIM_ROOT makes cleanup trivial."
+    mkdir -p "$DATA_DIR/logs"
+
+    # ArduPilot tracks the next log number in logs/LASTLOG.TXT; create it so the
+    # collect stage works on the very first run.
+    if [[ ! -f "$DATA_DIR/logs/LASTLOG.TXT" ]]; then
+        echo '0' > "$DATA_DIR/logs/LASTLOG.TXT"
     fi
-    cd "$REPO_ROOT"
-    poetry install --no-root || warn "poetry install had issues (CUDA torch source may need a moment to index)."
-    cd "$REPO_ROOT"
+    ok "data directory ready: $DATA_DIR"
+}
+
+update_config() {
+    # Rewrite data/config.yaml's paths: block so the project points at what we
+    # just installed. Only the four path keys we own are touched.
+    local cfg="$REPO_ROOT/data/config.yaml"
+    [[ -f "$cfg" ]] || { warn "$cfg not found; skipping config update."; return; }
+
+    log "Step D — wiring data/config.yaml to the installed paths"
+    python3 - "$cfg" "$ARDUPILOT_DIR" "$PX4_DIR" "$DATA_DIR" <<'PY'
+import re, sys
+cfg, ardupilot_dir, px4_dir, data_dir = sys.argv[1:5]
+sitl = f"{ardupilot_dir}/Tools/autotest/sim_vehicle.py"
+jmavsim = f"{px4_dir}/Tools/jmavsim_run.sh"
+morse = f"{ardupilot_dir}/libraries/SITL/examples/Morse/quadcopter.py"
+airsim = f"{data_dir}/airsim/Africa_Savannah/LinuxNoEditor/Africa_001.sh"
+
+text = open(cfg).read()
+repls = {
+    r"(?m)^(\s*ardupilot_log:\s*).*":      rf"\g<1>{data_dir}",
+    r"(?m)^(\s*sitl:\s*).*":               rf"\g<1>{sitl}",
+    r"(?m)^(\s*airsim:\s*).*":             rf"\g<1>{airsim}",
+    r"(?m)^(\s*px4_run:\s*).*":            rf"\g<1>{px4_dir}",
+    r"(?m)^(\s*jmavsim:\s*).*":            rf"\g<1>{jmavsim}",
+    r"(?m)^(\s*morse:\s*).*":              rf"\g<1>{morse}",
+}
+for pat, rep in repls.items():
+    text = re.sub(pat, rep, text)
+open(cfg, "w").write(text)
+print(f"  updated {cfg}")
+PY
+    ok "config.yaml paths updated"
 }
 
 # ---------------------------------------------------------------------------
-# Main
+# Driver
 # ---------------------------------------------------------------------------
 main() {
-    log "ICSearcher simulator bootstrap"
-    log "  ArduPilot -> $ARDUPILOT_DIR (branch $ARDUPILOT_BRANCH)"
-    log "  PX4       -> $PX4_DIR (branch $PX4_BRANCH)"
+    log "ICSearcher simulator installer"
+    info "SIM_ROOT     = $SIM_ROOT   (firmware repos go here)"
+    info "DATA_DIR     = $DATA_DIR   (flight logs go here)"
+    info "ArduPilot    = $ARDUPILOT_URL @ $ARDUPILOT_BRANCH"
+    info "PX4          = $PX4_URL @ $PX4_BRANCH"
     echo
 
+    mkdir -p "$SIM_ROOT"
     install_system_deps
 
-    if (( INSTALL_ARDUPILOT )); then install_ardupilot; fi
-    if (( INSTALL_PX4 ));          then install_px4;          fi
+    (( INSTALL_ARDUPILOT )) && install_ardupilot
+    (( INSTALL_PX4 ))       && install_px4
 
-    install_python_deps
+    setup_data_dir
+    update_config
 
-    echo
-    log "Done. Next steps:"
-    log "  1. Edit Cptool/config.yaml 'paths:' to match the directories above"
-    log "     (they match the defaults: $ARDUPILOT_DIR / $PX4_DIR)."
-    log "  2. Set 'mode: PX4' or 'mode: Ardupilot' in Cptool/config.yaml."
-    log "  3. Verify:  poetry run python3 0.collect.py   (ArduPilot)"
-    log "              poetry run python3 0.collect_px4.py   (PX4)"
+    cat <<SUMMARY
+
+$(printf '\033[1;32m✓ Installation complete.\033[0m')
+
+What was installed (all under $SIM_ROOT — remove with 'rm -rf $SIM_ROOT'):
+  ArduPilot SITL : $ARDUPILOT_DIR
+  PX4 + JMavSim  : $PX4_DIR
+  Flight logs    : $DATA_DIR            (also written into data/config.yaml)
+
+Your data/config.yaml 'paths:' block now points at these locations, so you can
+run the pipeline immediately. To switch firmware, edit 'mode:' in
+data/config.yaml (PX4 or Ardupilot) or set ICSEARCHER_MODE.
+
+Next:
+  uv sync --group cuda        # or --group cpu
+  uv run icsearcher-collect   # stage 0 — start collecting flight logs
+SUMMARY
 }
 
 main "$@"
