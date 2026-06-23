@@ -31,8 +31,8 @@
 #
 # REQUIREMENTS
 #   Ubuntu 20.04 or 22.04, ~10 GB free disk, internet.
-#   System packages (git, build-essential, ...) installed beforehand — see README.
-#   The firmware's own setup scripts (invoked below) use sudo and will prompt.
+#   System packages (build-essential, git, python3*, ...) installed beforehand
+#   via README §Prerequisites. This script does not use sudo.
 #   The first build downloads a compiler toolchain and is slow (20-60 min).
 #
 set -euo pipefail
@@ -159,12 +159,6 @@ IMPSHIM
         return
     fi
 
-    info "Running ArduPilot's own prerequisite installer (toolchain, etc.)"
-    info "(install-prereqs-ubuntu.sh uses sudo internally and will prompt for your password)"
-    if [[ -f "$ARDUPILOT_DIR/Tools/environment_install/install-prereqs-ubuntu.sh" ]]; then
-        bash "$ARDUPILOT_DIR/Tools/environment_install/install-prereqs-ubuntu.sh" -y || true
-    fi
-
     info "Building ArduCopter SITL — first build downloads a toolchain (slow)"
     info "(ArduPilot's Python tools — MAVProxy, dronekit-sitl, pexpect — come from"
     info " the project venv via 'uv sync --group ardupilot'; no system pip install.)"
@@ -196,10 +190,6 @@ install_px4() {
     if [[ -f "$px4_bin" ]]; then
         info "PX4 SITL already built at $px4_bin — skipping build."
     else
-        info "Running PX4's ubuntu.sh dependency installer"
-        info "(ubuntu.sh uses sudo internally and will prompt for your password)"
-        bash "$PX4_DIR/Tools/setup/ubuntu.sh" || warn "ubuntu.sh reported issues; continuing."
-
         info "Pre-building PX4 SITL + JMavSim so the first fuzzing run is fast"
         ( cd "$PX4_DIR" && HEADLESS=1 make px4_sitl jmavsim ) || true
         # The build spawns a jmavsim process; stop it, the binaries are already built.
