@@ -1,30 +1,41 @@
 [build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.poetry]
+[project]
 name = "icsearcher"
 version = "0.3.0"
 description = "Improved LGDFuzzer: surrogate-guided fuzzing for UAV autopilot controller parameters (ArduPilot / PX4)"
-authors = ["rain <rain@users.noreply.github.com>"]
-license = "MIT"
 readme = "README.md"
-repository = "https://github.com/BlackJoker1995/ParameterRecommendation"
-packages = [
-    { include = "icsearcher" },
-    { include = "pipelines" },
+license = "MIT"
+authors = [{ name = "rain", email = "rain@users.noreply.github.com" }]
+requires-python = ">=3.9,<3.13"
+
+# All runtime dependencies. `torch` here is the PyPI wheel (CPU by default).
+# For an NVIDIA GPU build, see the CUDA note in README §1 — install the CUDA
+# wheel manually after `uv sync` (uv does not support per-build source routing
+# in a single manifest cleanly).
+dependencies = [
+    "numpy>=1.24,<2.0",
+    "pandas>=2.0",
+    "scipy>=1.10",
+    "scikit-learn>=1.2",
+    "matplotlib>=3.6",
+    "pymavlink>=2.4",
+    "pyulog>=1.0",
+    "pexpect>=4.8",
+    # GA / search: pymoo powers both fuzzing (DE) and range derivation (NSGA-II)
+    "pymoo>=0.6",
+    "pyyaml>=6.0",
+    "loguru>=0.7",
+    "tqdm>=4.65",
+    # Surrogate model backend. CPU wheel from PyPI; swap for CUDA after install.
+    "torch>=2.1",
 ]
 
-# Console entry points so each pipeline runs as `uv run <command>` (no `python`,
-# no path) once the project is installed (`uv sync` / `poetry install`):
-#   uv run icsearcher-collect
-#   uv run icsearcher-convert
-#   uv run icsearcher-train extract
-#   uv run icsearcher-fuzz
-#   uv run icsearcher-validate pre
-#   uv run icsearcher-validate validate --device 1
-#   uv run icsearcher-range
-[tool.poetry.scripts]
+# Console entry points: run each pipeline stage as `uv run icsearcher-<stage>`
+# (no `python`, no path). Installed automatically by `uv sync`.
+[project.scripts]
 icsearcher-collect  = "pipelines.__main__:collect"
 icsearcher-convert  = "pipelines.__main__:convert"
 icsearcher-train    = "pipelines.__main__:train"
@@ -32,87 +43,21 @@ icsearcher-fuzz     = "pipelines.__main__:fuzz"
 icsearcher-validate = "pipelines.__main__:validate"
 icsearcher-range    = "pipelines.__main__:range_stage"
 
-# PyTorch CUDA 12.1 index. Used ONLY by the optional `cuda` group below so that
-# the default install pulls the CPU wheel from PyPI. Change the url suffix
-# (cu118 / cu124) if your driver requires a different CUDA toolkit version.
-[[tool.poetry.source]]
-name = "pytorch-cu121"
-url = "https://download.pytorch.org/whl/cu121"
-priority = "explicit"
+[dependency-groups]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "ruff>=0.1",
+    "black>=23.10",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.9"
-
-# Core scientific stack
-numpy = ">=1.24,<2.0"
-pandas = ">=2.0"
-scipy = ">=1.10"
-scikit-learn = ">=1.2"
-matplotlib = ">=3.6"
-
-# Drone comms / sim control
-pymavlink = ">=2.4"
-pyulog = ">=1.0"
-pexpect = ">=4.8"
-
-# GA / search. pymoo is the engine for both fuzzing (differential evolution)
-# and range derivation (NSGA-II), with built-in GD/IGD/HV/Spacing indicators.
-# geatpy (the legacy engine) was removed in stage 3.
-pymoo = ">=0.6"
-
-# Surrogate model backend. Stage 4 migrated from Keras/TensorFlow to PyTorch.
-# The legacy tensorflow/keras/keras-tcn and ray dependencies were removed.
-# PyTorch itself is declared in the mutually-exclusive `cpu`/`cuda` groups below
-# so a single install picks exactly one build:
-#   poetry install              -> CPU torch (default)
-#   poetry install --with cuda  -> CUDA 12.1 torch
-# See "Surrogate model backend" in the groups section.
-
-# Config / logging / utils
-pyyaml = ">=6.0"
-loguru = ">=0.7"
-tqdm = ">=4.65"
+# Tell hatchling which packages to ship (so the entry points resolve).
+[tool.hatch.build.targets.wheel]
+packages = ["icsearcher", "pipelines"]
 
 # ---------------------------------------------------------------------------
-# PyTorch backend — pick exactly ONE group at install time.
-#
-#   poetry install --with cpu    # CPU build (PyPI; no GPU required)
-#   poetry install --with cuda   # CUDA 12.1 build (NVIDIA GPU required)
-#
-# Both groups are optional by design so a single install resolves exactly one
-# `torch`. The model auto-selects the device at runtime (CUDA when available,
-# else CPU), so application code is identical for both builds.
-#
-# Notes:
-#  - The groups are mutually exclusive; do NOT install both
-#    (`poetry install --with cpu --with cuda` conflicts on `torch`).
-#  - For a different CUDA toolkit, edit the pytorch-cu121 source URL suffix
-#    above (cu118 / cu124) and update the version below if needed.
-#  - If `poetry install --with cuda` ever fails to pull the CUDA wheel (a known
-#    Poetry limitation, see python-poetry/poetry#10086), fall back to:
-#        poetry install --with cpu
-#        poetry run pip install torch --index-url https://download.pytorch.org/whl/cu121
+# Tool config
 # ---------------------------------------------------------------------------
-[tool.poetry.group.cpu]
-optional = true
-
-[tool.poetry.group.cpu.dependencies]
-# CPU-only PyTorch wheel. PyPI serves the +cpu local version automatically on
-# non-CUDA hosts.
-torch = ">=2.1"
-
-[tool.poetry.group.cuda]
-optional = true
-
-[tool.poetry.group.cuda.dependencies]
-torch = { version = ">=2.1", source = "pytorch-cu121" }
-
-[tool.poetry.group.dev.dependencies]
-pytest = ">=7.4"
-pytest-cov = ">=4.1"
-ruff = ">=0.1"
-black = ">=23.10"
-
 [tool.pytest.ini_options]
 minversion = "7.4"
 testpaths = ["tests"]
@@ -122,7 +67,7 @@ addopts = "-ra -q"
 [tool.ruff]
 line-length = 120
 target-version = "py39"
-extend-exclude = ["model", "result", "fig"]
+extend-exclude = ["model", "result", "fig", "sims"]
 
 [tool.black]
 line-length = 120

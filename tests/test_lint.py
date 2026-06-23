@@ -8,6 +8,25 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
+# Directories that are NOT our source: venvs, the cloned firmware under sims/,
+# generated artifacts. Walking into these would (a) be slow and (b) hit
+# non-UTF-8 files (e.g. vendored stubs) and crash the read.
+_SKIP_DIRS = {".git", ".venv", "sims", "model", "result", "fig", "__pycache__"}
+
+
+def _source_files():
+    """Yield our own .py files, skipping vendored/generated trees."""
+    for py in REPO.rglob("*.py"):
+        parts = set(py.parts)
+        if parts & _SKIP_DIRS:
+            continue
+        yield py
+
+
+def _read(py: Path) -> str:
+    """Read a source file as text, tolerating any stray non-UTF-8 bytes."""
+    return py.read_bytes().decode("utf-8", errors="replace")
+
 
 def test_no_deprecated_numpy_aliases():
     """No source file references removed numpy aliases / numpy.dual."""
@@ -19,11 +38,10 @@ def test_no_deprecated_numpy_aliases():
         re.compile(r"\.fillna\(method=['\"](?:ffill|bfill)['\"]"),
     ]
     offenders = []
-    for py in REPO.rglob("*.py"):
-        # Skip tests (their docstrings mention these tokens) and git metadata.
-        if ".git" in py.parts or "tests" in py.parts:
+    for py in _source_files():
+        if "tests" in py.parts:  # test docstrings mention these tokens
             continue
-        text = py.read_text(encoding="utf-8")
+        text = _read(py)
         for pat in patterns:
             if pat.search(text):
                 offenders.append(f"{py}: {pat.pattern}")
@@ -35,10 +53,10 @@ def test_no_deprecated_stubs_referenced():
     removed = ("LogHandler", "ParameterManager", "MavlinkManager",
                "GAOptimizerOld", "ProblemGAOld")
     offenders = []
-    for py in REPO.rglob("*.py"):
-        if ".git" in py.parts or "tests" in py.parts:
+    for py in _source_files():
+        if "tests" in py.parts:
             continue
-        text = py.read_text(encoding="utf-8")
+        text = _read(py)
         for sym in removed:
             if sym in text:
                 offenders.append(f"{py}: {sym}")
@@ -48,10 +66,10 @@ def test_no_deprecated_stubs_referenced():
 def test_no_hardcoded_repo_relative_mission_paths():
     """Mission/fit-collection paths must go through toolConfig, not be hardcoded."""
     offenders = []
-    for py in REPO.rglob("*.py"):
-        if ".git" in py.parts or "tests" in py.parts or py.name == "config.py":
+    for py in _source_files():
+        if "tests" in py.parts or py.name == "config.py":
             continue
-        text = py.read_text(encoding="utf-8")
+        text = _read(py)
         # Both the legacy Cptool/ layout and the new data/ layout.
         if re.search(r"['\"](?:Cptool|data)/fitCollection(_px4)?\.txt['\"]", text):
             offenders.append(str(py))

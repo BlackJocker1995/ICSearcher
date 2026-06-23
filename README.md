@@ -78,9 +78,8 @@ pyproject.toml            Project manifest (deps + icsearcher-* console entry po
 - **OS:** Ubuntu 20.04 or 22.04 (recommended). The simulators and their build
   toolchains are Linux-centric.
 - **Python:** 3.9 – 3.12.
-- **GPU:** optional but recommended for training. The project supports both a
-  **CPU** and a **CUDA 12.1** PyTorch build — you pick one at install time
-  (see Step 1).
+- **GPU:** optional but recommended for training. The default install uses a
+  CPU PyTorch wheel; see Step 1 for the one-line CUDA swap.
 - **Simulators:** ArduPilot SITL and/or PX4-Autopilot with JMavSim. The
   bootstrap script builds them for you (see Step 2).
 
@@ -90,51 +89,35 @@ pyproject.toml            Project manifest (deps + icsearcher-* console entry po
 
 ### Step 1 — Install the Python environment
 
-All Python dependencies are declared in `pyproject.toml`. The project works with
-either [uv](https://docs.astral.sh/uv/) (recommended, faster) or
-[Poetry](https://python-poetry.org). Below is the **uv** flow.
+All Python dependencies are declared in `pyproject.toml` and managed with
+[uv](https://docs.astral.sh/uv/). One command resolves the tree, creates
+`.venv`, installs the project (plus its `icsearcher-*` console commands), and
+writes `uv.lock`:
 
 ```bash
 # 1a. Install uv (if you don't already have it)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 1b. From the repository root, sync the project + a PyTorch backend (pick ONE)
+# 1b. From the repository root, sync everything
 cd ICSearcher
-uv sync --group cpu     # CPU build, or
-uv sync --group cuda    # CUDA 12.1 build
+uv sync
 ```
 
-`uv sync` resolves the dependency tree, creates `.venv`, installs the project
-(plus its `icsearcher-*` console commands), and writes `uv.lock`. This brings in
-the scientific stack (numpy, pandas, scipy, scikit-learn), the drone-comms stack
-(pymavlink, pyulog, pexpect), the GA engine (pymoo), and dev tools (pytest).
-**PyTorch is pulled in by exactly one of the two groups — they are mutually
-exclusive:**
+This brings in the scientific stack (numpy, pandas, scipy, scikit-learn), the
+drone-comms stack (pymavlink, pyulog, pexpect), the GA engine (pymoo), the
+surrogate model backend (PyTorch, **CPU wheel from PyPI**), and dev tools
+(pytest). Nothing else to choose.
 
-```bash
-# Option A — CPU build (no GPU required)
-uv sync --group cpu
-
-# Option B — CUDA 12.1 build (NVIDIA GPU required)
-uv sync --group cuda
-```
-
-The surrogate model auto-selects the device at runtime (CUDA when available,
-otherwise CPU), so the rest of the pipeline is identical for both.
-
-> **Different CUDA toolkit?** `pyproject.toml` pins the CUDA index to `cu121` via
-> an explicit `[[tool.poetry.source]]`. For a different toolkit, edit that URL's
-> suffix (`cu118` / `cu124`).
->
-> **CUDA install trouble?** Fall back to installing the CUDA wheel manually after
-> a CPU sync:
+> **Want GPU training?** The default install uses the CPU PyTorch wheel. For an
+> NVIDIA GPU, swap in the CUDA wheel after syncing (uv's single-manifest source
+> routing can't pick a CUDA build cleanly, so this is a manual one-liner):
 > ```bash
-> uv sync --group cpu
+> uv sync
 > uv pip install torch --index-url https://download.pytorch.org/whl/cu121
 > ```
->
-> **Prefer Poetry?** The same groups work: `poetry install --with cpu` /
-> `poetry install --with cuda`. Then prefix commands with `poetry run`.
+> For a different CUDA toolkit, change the `cu121` suffix (`cu118` / `cu124`).
+> The model auto-selects the device at runtime, so application code is identical
+> for CPU and CUDA.
 
 > **Optional TCN backend.** A TCN surrogate (`CyTCN`) is available but no longer
 > needs an external package — it ships as a built-in `Conv1d` head in
@@ -252,8 +235,7 @@ uv run icsearcher-range
 ```
 
 Prefer the module dispatcher? `uv run python -m pipelines <stage> [args...]`
-works too (e.g. `uv run python -m pipelines train extract`). With Poetry, prefix
-the console commands with `poetry run` instead of `uv run`.
+works too (e.g. `uv run python -m pipelines train extract`).
 
 **Outputs** (git-ignored):
 
@@ -294,7 +276,7 @@ the console commands with `poetry run` instead of `uv run`.
 Pure-function unit tests that do **not** require a live SITL simulator:
 
 ```bash
-uv run pytest        # or: poetry run pytest
+uv run pytest
 ```
 
 Coverage spans the config loader, parameter scaling, the pymoo problem shapes,
@@ -314,8 +296,8 @@ JMavSim window for debugging, remove `HEADLESS=1` from the PX4 branch of
 `icsearcher/sim.py:start_sitl`.
 
 **The lockfile is not committed.** Generate it locally with `uv lock`
-(or `poetry lock`); the TensorFlow-free dependency graph resolves quickly.
-Commit it if you want reproducible installs across machines.
+(the TensorFlow-free dependency graph resolves in a couple of seconds).
+Commit `uv.lock` if you want reproducible installs across machines.
 
 **Retrain after upgrading past stage 4.** The surrogate artifact changed from
 `lstm.h5` (Keras) to `lstm.pt` (PyTorch state-dict). Old Keras models are not
