@@ -3,18 +3,18 @@ SimManager Version: 4.0 22-10-24
 """
 import multiprocessing
 import os
-import sys
 import time
 from typing import Type
 
 import pexpect
 from pexpect import spawn
 
-# The project's Python interpreter — used to launch ArduPilot's sim_vehicle.py
-# so it inherits the project venv (where pexpect / pymavlink / MAVProxy live,
-# installed via `uv sync` / `uv sync --group ardupilot`). Avoids a bare
-# `python3` that would miss the venv and fail with ModuleNotFoundError.
-_PY = sys.executable
+# Launch ArduPilot's sim_vehicle.py via `uv run python` so both the top-level
+# script AND any subprocesses it spawns (e.g. the waf build system, which uses
+# bare `env python`) inherit the project venv's Python and PATH. Avoids both
+# "No module named 'pexpect'" (venv not in sys.path) and "env: ‘python’: not
+# found" (no system `python` binary).
+_PY = "uv run python"
 
 from icsearcher.comms import GaMavlinkAPM, DroneMavlink
 from icsearcher.config import toolConfig
