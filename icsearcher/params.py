@@ -4,7 +4,18 @@ import os
 import numpy as np
 import pandas as pd
 from pymavlink import mavextra
-from Cptool.config import toolConfig
+
+
+def _config():
+    """Lazy import so tests can repoint the toolConfig singleton per mode.
+
+    Importing at module top-level binds the singleton object captured at first
+    import, which defeats per-mode monkeypatching. Reading it through the module
+    at call time picks up any reassignment of ``icsearcher.config.toolConfig``.
+    """
+    from icsearcher.config import toolConfig
+    return toolConfig
+
 
 class Location:
     def __init__(self, x, y=None, timeS=0):
@@ -36,7 +47,7 @@ def load_param():
     load parameter we want to fuzzing
     :return:
     """
-    path = toolConfig._param_file(toolConfig.MODE)
+    path = _config()._param_file(_config().MODE)
     with open(path, 'r') as f:
         return pd.DataFrame(json.loads(f.read()))
 
@@ -46,9 +57,10 @@ def load_sub_param():
     load parameter we want to fuzzing
     :return:
     """
-    path = toolConfig._param_file(toolConfig.MODE)
+    cfg = _config()
+    path = cfg._param_file(cfg.MODE)
     with open(path, 'r') as f:
-        return pd.DataFrame(json.loads(f.read()))[toolConfig.PARAM_PART]
+        return pd.DataFrame(json.loads(f.read()))[cfg.PARAM_PART]
 
 
 def get_default_values(para_dict):
@@ -117,8 +129,9 @@ def return_min_max_scaler_param(param_value: object) -> object:
 
 
 def min_max_scaler(trans, values):
-    status_value = values[:, :toolConfig.STATUS_LEN]
-    param_value = values[:, toolConfig.STATUS_LEN:]
+    status_len = _config().STATUS_LEN
+    status_value = values[:, :status_len]
+    param_value = values[:, status_len:]
 
     param_value = min_max_scaler_param(param_value)
 
@@ -128,8 +141,9 @@ def min_max_scaler(trans, values):
 
 
 def return_min_max_scaler(trans, values):
-    status_value = values[:, :toolConfig.STATUS_LEN]
-    param_value = values[:, toolConfig.STATUS_LEN:]
+    status_len = _config().STATUS_LEN
+    status_value = values[:, :status_len]
+    param_value = values[:, status_len:]
 
     param_value = return_min_max_scaler_param(param_value)
 
@@ -144,6 +158,6 @@ def pad_configuration_default_value(params_value):
     all_default_value = para_dict.loc[['default']]
     all_default_value = pd.concat([all_default_value]*params_value.shape[0])
     # replace values
-    participle_param = toolConfig.PARAM_PART
+    participle_param = _config().PARAM_PART
     all_default_value[participle_param] = params_value
     return all_default_value.values

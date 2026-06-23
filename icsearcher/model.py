@@ -24,8 +24,8 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     TCN = None
 
-from Cptool.config import toolConfig
-from Cptool.mavtool import min_max_scaler
+from icsearcher.config import toolConfig
+from icsearcher.params import min_max_scaler
 
 
 class Modeling(object):

@@ -4,10 +4,10 @@ import matplotlib.pyplot as plt
 import pickle
 from abc import ABC, abstractmethod
 
-from Cptool.config import toolConfig
-from Cptool.gaMavlink import GaMavlinkAPM
-from Cptool.mavtool import load_param, select_sub_dict, read_unit_from_dict, get_default_values, read_range_from_dict
-from range.rangeproblem import GARangeProblem
+from icsearcher.config import toolConfig
+from icsearcher.comms import GaMavlinkAPM
+from icsearcher.params import load_param, select_sub_dict, read_unit_from_dict, get_default_values, read_range_from_dict
+from icsearcher.range.problem import GARangeProblem
 
 
 class BaseRangeOptimizer(ABC):

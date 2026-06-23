@@ -14,10 +14,10 @@ import pexpect
 from pexpect import spawn
 from pymavlink import mavextra, mavwp, mavutil
 
-from Cptool.gaMavlink import GaMavlinkAPM, DroneMavlink
-from Cptool.config import toolConfig
-from Cptool.logging_config import setup_logging
-from Cptool.mavtool import Location
+from icsearcher.comms import GaMavlinkAPM, DroneMavlink
+from icsearcher.config import toolConfig
+from icsearcher.logging_config import setup_logging
+from icsearcher.params import Location
 from loguru import logger
 
 

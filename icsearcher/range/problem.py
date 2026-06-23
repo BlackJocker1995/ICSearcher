@@ -4,8 +4,8 @@ import numpy as np
 import geatpy as ea
 import pandas as pd
 
-from Cptool.config import toolConfig
-from Cptool.mavtool import load_param, read_unit_from_dict
+from icsearcher.config import toolConfig
+from icsearcher.params import load_param, read_unit_from_dict
 
 
 class BaseRangeProblem(ABC):

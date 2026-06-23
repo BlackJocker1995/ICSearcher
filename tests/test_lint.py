@@ -52,6 +52,7 @@ def test_no_hardcoded_repo_relative_mission_paths():
         if ".git" in py.parts or "tests" in py.parts or py.name == "config.py":
             continue
         text = py.read_text(encoding="utf-8")
-        if re.search(r"['\"]Cptool/fitCollection(_px4)?\.txt['\"]", text):
+        # Both the legacy Cptool/ layout and the new data/ layout.
+        if re.search(r"['\"](?:Cptool|data)/fitCollection(_px4)?\.txt['\"]", text):
             offenders.append(str(py))
     assert not offenders, "hardcoded mission paths should use toolConfig.mission_file(): " + ", ".join(offenders)

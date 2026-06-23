@@ -1,54 +1,76 @@
-"""Tests for the Cptool.config singleton.
+"""Tests for the icsearcher.config singleton.
 
-These cover the stage-1 fixes: YAML key paths are now read from their nested
-locations, mode-derived lengths are computed correctly, and switching modes
-re-populates PARAM/PARAM_PART.
+Stage-2 scope: the config is frozen at load time, the mode comes from
+config.yaml / ICSEARCHER_MODE / the ToolConfig(mode=...) ctor argument, and all
+mode-derived constants are computed once. There is no runtime select_mode.
 """
-from Cptool.config import toolConfig
+import os
+
+import pytest
+
+from icsearcher.config import REPO_ROOT, ToolConfig, toolConfig
 
 
-def test_yaml_mode_is_respected():
-    """The mode declared in config.yaml should be honoured at import time."""
-    # config.yaml ships with mode: PX4, so the singleton should start in PX4.
+def test_singleton_mode_is_valid():
+    """The module-level singleton must have constructed with a valid mode."""
     assert toolConfig.MODE in ("Ardupilot", "PX4")
 
 
-def test_select_mode_populates_param_part(mode):
-    """select_mode must set PARAM and PARAM_PART for both firmwares."""
-    assert len(toolConfig.PARAM) > 0
-    assert len(toolConfig.PARAM_PART) > 0
-    # PARAM_PART is always a subset of PARAM.
-    assert set(toolConfig.PARAM_PART).issubset(set(toolConfig.PARAM))
+def test_ctor_freezes_mode():
+    """ToolConfig(mode=...) selects the mode at construction time."""
+    for m in ("Ardupilot", "PX4"):
+        cfg = ToolConfig(mode=m)
+        assert cfg.MODE == m
+        assert len(cfg.PARAM) > 0
+        assert len(cfg.PARAM_PART) > 0
 
 
-def test_derived_lengths_consistent(mode):
+def test_bad_mode_rejected():
+    with pytest.raises(ValueError):
+        ToolConfig(mode="bogus")
+
+
+def test_setattr_is_frozen():
+    """After construction the singleton cannot be mutated."""
+    with pytest.raises(ToolConfig.ConstError):
+        toolConfig.MODE = "PX4"
+
+
+@pytest.mark.parametrize("mode_name", ["Ardupilot", "PX4"])
+def test_param_part_is_subset(mode_name):
+    """PARAM_PART is always a subset of PARAM for both firmwares."""
+    cfg = ToolConfig(mode=mode_name)
+    assert set(cfg.PARAM_PART).issubset(set(cfg.PARAM))
+
+
+@pytest.mark.parametrize("mode_name", ["Ardupilot", "PX4"])
+def test_derived_lengths_consistent(mode_name):
     """The mode-derived lengths must satisfy their defining relations."""
-    # STATUS_LEN excludes the leading TimeS column.
-    assert toolConfig.STATUS_LEN == len(toolConfig.STATUS_ORDER) - 1
-    # DATA_LEN = status channels + all params.
-    assert toolConfig.DATA_LEN == toolConfig.STATUS_LEN + len(toolConfig.PARAM)
-    # INPUT/OUTPUT projected lengths.
-    assert toolConfig.INPUT_DATA_LEN == toolConfig.DATA_LEN * toolConfig.INPUT_LEN
-    assert toolConfig.OUTPUT_DATA_LEN == toolConfig.STATUS_LEN * toolConfig.OUTPUT_LEN
-    # SEGMENT_LEN = 10 + INPUT_LEN.
-    assert toolConfig.SEGMENT_LEN == 10 + toolConfig.INPUT_LEN
+    cfg = ToolConfig(mode=mode_name)
+    assert cfg.STATUS_LEN == len(cfg.STATUS_ORDER) - 1               # drop TimeS
+    assert cfg.DATA_LEN == cfg.STATUS_LEN + len(cfg.PARAM)
+    assert cfg.INPUT_DATA_LEN == cfg.DATA_LEN * cfg.INPUT_LEN
+    assert cfg.OUTPUT_DATA_LEN == cfg.STATUS_LEN * cfg.OUTPUT_LEN
+    assert cfg.SEGMENT_LEN == 10 + cfg.INPUT_LEN
 
 
-def test_exe_suffix(mode):
+@pytest.mark.parametrize("mode_name", ["Ardupilot", "PX4"])
+def test_exe_suffix(mode_name):
     """EXE is '' when PARAM_PART == PARAM, else the partial count."""
-    if len(toolConfig.PARAM_PART) == len(toolConfig.PARAM):
-        assert toolConfig.EXE == ""
+    cfg = ToolConfig(mode=mode_name)
+    if len(cfg.PARAM_PART) == len(cfg.PARAM):
+        assert cfg.EXE == ""
     else:
-        assert toolConfig.EXE == len(toolConfig.PARAM_PART)
+        assert cfg.EXE == len(cfg.PARAM_PART)
 
 
-def test_mission_file_resolves_absolute(mode):
+@pytest.mark.parametrize("mode_name", ["Ardupilot", "PX4"])
+def test_mission_file_resolves_absolute(mode_name):
     """mission_file() must return an absolute path for the current mode."""
-    import os
-
-    path = toolConfig.mission_file()
+    cfg = ToolConfig(mode=mode_name)
+    path = cfg.mission_file()
     assert os.path.isabs(path), f"mission_file() returned relative path {path}"
-    assert path.endswith("fitCollection_px4.txt" if mode == "PX4" else "fitCollection.txt")
+    assert path.endswith("fitCollection_px4.txt" if mode_name == "PX4" else "fitCollection.txt")
 
 
 def test_resolve_leaves_absolute_untouched():
@@ -58,8 +80,12 @@ def test_resolve_leaves_absolute_untouched():
 
 def test_resolve_makes_relative_absolute():
     """resolve() must anchor relative paths at the repo root."""
-    import os
-
-    out = toolConfig.resolve("Cptool/param_ardu.json")
+    out = toolConfig.resolve("data/param_ardu.json")
     assert os.path.isabs(out)
-    assert out.endswith("Cptool/param_ardu.json")
+    assert out.endswith("data/param_ardu.json")
+    assert os.path.exists(out)  # the data file really is there
+
+
+def test_repo_root_points_at_repo():
+    assert (REPO_ROOT / "icsearcher").is_dir()
+    assert (REPO_ROOT / "data" / "config.yaml").is_file()

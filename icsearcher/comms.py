@@ -16,8 +16,8 @@ from pymavlink.mavutil import mavserial
 from pyulog import ULog
 from tqdm import tqdm
 
-from Cptool.config import toolConfig
-from Cptool.mavtool import load_param, read_path_specified_file, select_sub_dict
+from icsearcher.config import toolConfig
+from icsearcher.params import load_param, read_path_specified_file, select_sub_dict
 
 
 class DroneMavlink:

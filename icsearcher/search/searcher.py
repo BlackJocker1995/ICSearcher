@@ -2,11 +2,11 @@ import geatpy as ea
 import numpy as np
 from abc import ABC, abstractmethod
 
-from Cptool.config import toolConfig
-from Cptool.gaMavlink import GaMavlinkAPM
-from Cptool.mavtool import load_param, select_sub_dict, get_default_values, read_unit_from_dict, read_range_from_dict
-from ModelFit.approximate import CyLSTM
-from uavga.problem import ProblemGA
+from icsearcher.config import toolConfig
+from icsearcher.comms import GaMavlinkAPM
+from icsearcher.params import load_param, select_sub_dict, get_default_values, read_unit_from_dict, read_range_from_dict
+from icsearcher.model import CyLSTM
+from icsearcher.search.problem import ProblemGA
 
 
 class BaseSearchOptimizer(ABC):

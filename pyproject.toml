@@ -4,17 +4,14 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "icsearcher"
-version = "0.2.0"
+version = "0.3.0"
 description = "Improved LGDFuzzer: surrogate-guided fuzzing for UAV autopilot controller parameters (ArduPilot / PX4)"
 authors = ["rain <rain@users.noreply.github.com>"]
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/BlackJoker1995/ParameterRecommendation"
 packages = [
-    { include = "Cptool" },
-    { include = "ModelFit" },
-    { include = "uavga" },
-    { include = "range" },
+    { include = "icsearcher" },
 ]
 
 # PyTorch CUDA index. CUDA 12.1 wheels. Change the url suffix (cu118/cu124) if
@@ -39,8 +36,12 @@ pymavlink = ">=2.4"
 pyulog = ">=1.0"
 pexpect = ">=4.8"
 
-# GA / search (kept in stage 1; migrated to pymoo in stage 3)
+# GA / search. geatpy is the legacy engine (stage 1/2); pymoo is the target
+# engine for stage 3 (NSGA-II range search + differential-evolution fuzzing,
+# with built-in GD/IGD/HV/Spacing indicators). Both listed now so the env is
+# ready when stage 3 lands; geatpy is removed once the migration completes.
 geatpy = ">=2.7"
+pymoo = ">=0.6"
 
 # Surrogate model (kept in stage 1; migrated to PyTorch in stage 4).
 # Keras is bundled with tensorflow, so we do not pin it separately. The TCN

@@ -3,8 +3,8 @@
 # Operation Mode (PX4 or Ardupilot)
 # This value is authoritative: it is read once at startup and all
 # mode-derived constants (STATUS_ORDER, PARAM, PARAM_PART, paths) are
-# computed from it. Override per-run with the --mode CLI flag in the
-# pipeline scripts.
+# computed from it. Override per-run via the ICSEARCHER_MODE env var
+# (config is frozen at load time — there is no runtime select_mode).
 mode: PX4
 
 # Simulation Settings
@@ -42,5 +42,11 @@ cluster_choice_num: 10
 
 # Parameter Files (relative to repo root by default)
 param_files:
-  ardupilot: Cptool/param_ardu.json
-  px4: Cptool/param_px4.json
+  ardupilot: data/param_ardu.json
+  px4: data/param_px4.json
+
+# Mission files (relative to repo root; defaults to data/fitCollection[_px4].txt)
+missions:
+  fit_collection:
+    ardupilot: data/fitCollection.txt
+    px4: data/fitCollection_px4.txt

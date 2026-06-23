@@ -7,11 +7,11 @@ import pandas as pd
 from tensorflow.python.keras.models import load_model
 from abc import ABC, abstractmethod
 
-from Cptool.gaMavlink import GaMavlinkAPM
-from Cptool.config import toolConfig
-from Cptool.mavtool import min_max_scaler_param, load_param, read_unit_from_dict, pad_configuration_default_value, \
+from icsearcher.comms import GaMavlinkAPM
+from icsearcher.config import toolConfig
+from icsearcher.params import min_max_scaler_param, load_param, read_unit_from_dict, pad_configuration_default_value, \
     select_sub_dict
-from ModelFit.approximate import CyLSTM
+from icsearcher.model import CyLSTM
 
 
 class BaseProblem(ABC):
