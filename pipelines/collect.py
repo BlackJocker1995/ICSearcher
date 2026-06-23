@@ -27,6 +27,7 @@ def _count_logs():
     # ArduPilot tracks the next index in logs/LASTLOG.TXT.
     log_index = f"{toolConfig.ARDUPILOT_LOG_PATH}/logs/LASTLOG.TXT"
     if not os.path.exists(log_index):
+        os.makedirs(os.path.dirname(log_index), exist_ok=True)
         with open(log_index, "w") as f:
             f.write('0')
     with open(log_index, 'r') as f:
