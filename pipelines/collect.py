@@ -43,9 +43,12 @@ def main():
     while _count_logs() < TARGET_LOGS:
         try:
             time.sleep(0.5)
-            print('-' * 98)
-            print(f'--------- {datetime.now()} === lastindex: {_count_logs()} --------------')
-            print('-' * 98)
+            collected = _count_logs()
+            progress = collected / TARGET_LOGS * 100
+            logger.info(
+                f"[{datetime.now():%Y-%m-%d %H:%M:%S}] "
+                f"collecting {collected}/{TARGET_LOGS} ({progress:.1f}%)"
+            )
 
             manager.start_sitl()
             manager.mav_monitor_init(mavlink_cls, 0)
