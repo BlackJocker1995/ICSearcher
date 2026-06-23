@@ -156,16 +156,16 @@ script — it prints what it's doing at each step.
 # Make the script executable (one-time — needed after a fresh clone)
 chmod +x scripts/setup_sims.sh
 
-# Install BOTH simulators (default). Everything lands under ./sims/ inside the
+# Clone + build both simulators. Everything lands under ./sims/ inside the
 # repo, so the whole install is self-contained and removed by `rm -rf sims`.
 ./scripts/setup_sims.sh
 
-# Or install only one firmware
+# Or build only one firmware
 ./scripts/setup_sims.sh --ardupilot
 ./scripts/setup_sims.sh --px4
 ```
 
-**What it installs** (all under the repository, ~10 GB):
+**What it clones + builds** (all under the repository, ~10 GB):
 
 ```
 ICSearcher/
@@ -222,7 +222,9 @@ See [Configuration reference](#configuration-reference) for every field.
 
 ### Step 4 — Run the pipeline
 
-**Before running, make sure you've built the simulators first** (Step 2, `./scripts/setup_sims.sh`), otherwise the pipeline will fail to launch SITL.
+**Before running, make sure you've cloned + built the simulators first**
+(`./scripts/setup_sims.sh`, see Step 2 above). The pipeline launches SITL
+simulators — without them it cannot collect or validate flights.
 
 Run the stages in order. Each stage is a console command — no `python` or path
 needed (the `icsearcher-*` entry points are installed by `uv sync`):
