@@ -171,8 +171,16 @@ The script:
 5. **Rewrites `data/config.yaml`** so `paths:` points at `sims/ardupilot`,
    `sims/PX4-Autopilot`, and `sims/data` — no manual editing needed.
 
-Run it once from a sudo-capable account. The first build downloads a compiler
+Run it once **as your normal user** (the account must be able to `sudo` — the
+script prompts for the password only when it runs `apt-get`). Do **not** run the
+whole script under `sudo` (`sudo ./scripts/...`): it would run `uv`/builds as
+root, which breaks the project venv. The script already escalates internally
+where needed (`sudo apt-get ...`). The first build downloads a compiler
 toolchain and is slow (20–60 min); later pipeline runs reuse the binaries.
+
+> **`权限不够` / permission denied?** The script needs its executable bit. If
+> your clone lost it, run `chmod +x scripts/setup_sims.sh` first, or invoke it
+> as `bash scripts/setup_sims.sh`.
 
 > **Custom locations?** Override with env vars (absolute paths):
 > ```bash
