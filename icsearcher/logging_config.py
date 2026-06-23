@@ -40,19 +40,29 @@ class _InterceptHandler(logging.Handler):
         logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
 
 
-def setup_logging(debug: bool = False, log_file=None) -> None:
+def setup_logging(debug=None, log_file=None) -> None:
     """Configure the global loguru sink and bridge stdlib logging.
 
     Args:
         debug: When True the stderr sink runs at DEBUG, otherwise INFO.
-            Overridden by the ``ICSEARCHER_DEBUG`` env var (``1`` / ``true``)
-            so users can enable debug without editing config.
+            If ``None`` (the default), reads ``toolConfig.DEBUG`` from
+            ``data/config.yaml `` (field ``simulation.debug``), so changing
+            the yaml value takes effect without code modification.
+            Overridden by the ``ICSEARCHER_DEBUG`` env var (``1`` / ``true``).
         log_file: Optional path to also mirror records into a rotating file.
     """
-    # Prefer the env var as a quick toggle without touching config.yaml.
+    # Env var wins over everything (quick toggle without touching any file).
     env_debug = os.environ.get("ICSEARCHER_DEBUG", "").lower() in ("1", "true", "yes")
     if env_debug:
         debug = True
+
+    # Fall back to config.yaml's simulation.debug field.
+    if debug is None:
+        try:
+            from icsearcher.config import toolConfig
+            debug = bool(toolConfig.DEBUG)
+        except Exception:
+            debug = False
     logger.remove()
     level = "DEBUG" if debug else "INFO"
     logger.add(
