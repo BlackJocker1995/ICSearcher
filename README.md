@@ -77,7 +77,8 @@ pyproject.toml            Project manifest (deps + icsearcher-* console entry po
 
 - **OS:** Ubuntu 20.04 or 22.04 (recommended). The simulators and their build
   toolchains are Linux-centric.
-- **Python:** 3.9 – 3.12.
+- **Python:** 3.9 – 3.11. Python 3.12 has known compatibility issues with
+  ArduPilot's build system (the `imp` module was removed) and is not supported.
 - **GPU:** optional but recommended for training. The default install uses a
   CPU PyTorch wheel; see Step 1 for the one-line CUDA swap.
 - **Simulators:** ArduPilot SITL and/or PX4-Autopilot with JMavSim. The
