@@ -80,12 +80,9 @@ die()  { printf '\n\033[1;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 # ---------------------------------------------------------------------------
 install_system_deps() {
     log "Step 0 — checking system build dependencies"
-    info "This script does NOT use sudo. Install the system packages yourself"
-    info "first (see README §Prerequisites), then run this script as your normal user."
-    # The firmware repos' own setup scripts (install-prereqs-ubuntu.sh /
-    # ubuntu.sh) DO use sudo internally — they will prompt for your password
-    # when they run. This is expected and the only place sudo appears.
-    local missing=()
+	    info "This script does NOT use sudo. Install the system packages yourself"
+	    info "first (see README §Prerequisites), then run this script as your normal user."
+	    local missing=()
     for cmd in git python3 pip3 wget curl ccache make; do
         if ! command -v "$cmd" >/dev/null 2>&1; then
             missing+=("$cmd")
