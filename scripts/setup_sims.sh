@@ -30,7 +30,9 @@
 #   ARDUPILOT_BRANCH=Copter-4.5.2 PX4_BRANCH=v1.14.0 ./scripts/setup_sims.sh
 #
 # REQUIREMENTS
-#   Ubuntu 20.04 or 22.04, a sudo-capable account, ~10 GB free disk, internet.
+#   Ubuntu 20.04 or 22.04, ~10 GB free disk, internet.
+#   System packages (git, build-essential, ...) installed beforehand — see README.
+#   The firmware's own setup scripts (invoked below) use sudo and will prompt.
 #   The first build downloads a compiler toolchain and is slow (20-60 min).
 #
 set -euo pipefail
@@ -74,23 +76,30 @@ warn() { printf '  \033[1;33m! %s\033[0m\n' "$*" >&2; }
 die()  { printf '\n\033[1;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
-# Step 0 — system build dependencies
+# Step 0 — verify system build dependencies (installed by the user, see README)
 # ---------------------------------------------------------------------------
 install_system_deps() {
-    log "Step 0 — installing minimal system build dependencies (needs sudo)"
-    info "Just the bootstrap essentials; ArduPilot/PX4 install their own extras."
-    # Only what's needed to clone, run the firmware prereq scripts, and build
-    # any Python sdist wheels. The firmware repos' own setup scripts
-    # (install-prereqs-ubuntu.sh / ubuntu.sh) pull in cmake, ninja, the
-    # simulator libs, etc. — so we don't duplicate them here.
-    sudo apt-get update -qq
-    sudo apt-get install -y --no-install-recommends \
-        git \
-        python3 python3-pip python3-dev python3-venv \
-        build-essential \
-        ccache \
-        wget curl
-    ok "system packages installed"
+    log "Step 0 — checking system build dependencies"
+    info "This script does NOT use sudo. Install the system packages yourself"
+    info "first (see README §Prerequisites), then run this script as your normal user."
+    # The firmware repos' own setup scripts (install-prereqs-ubuntu.sh /
+    # ubuntu.sh) DO use sudo internally — they will prompt for your password
+    # when they run. This is expected and the only place sudo appears.
+    local missing=()
+    for cmd in git python3 pip3 wget curl ccache make; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            missing+=("$cmd")
+        fi
+    done
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        die "Missing commands: ${missing[*]}.
+  Install them (one-time, needs sudo) — see README §Prerequisites:
+    sudo apt-get update
+    sudo apt-get install -y --no-install-recommends \\
+        git python3 python3-pip python3-dev python3-venv \\
+        build-essential ccache wget curl"
+    fi
+    ok "system build tools present"
 }
 
 # ---------------------------------------------------------------------------
@@ -109,6 +118,7 @@ install_ardupilot() {
     git -C "$ARDUPILOT_DIR" submodule update --init --recursive
 
     info "Running ArduPilot's own prerequisite installer (toolchain, etc.)"
+    info "(install-prereqs-ubuntu.sh uses sudo internally and will prompt for your password)"
     if [[ -f "$ARDUPILOT_DIR/Tools/environment_install/install-prereqs-ubuntu.sh" ]]; then
         bash "$ARDUPILOT_DIR/Tools/environment_install/install-prereqs-ubuntu.sh" -y || true
     fi
@@ -140,7 +150,8 @@ install_px4() {
     git -C "$PX4_DIR" checkout "$PX4_BRANCH"
     git -C "$PX4_DIR" submodule update --init --recursive
 
-    info "Running PX4's ubuntu.sh dependency installer (needs sudo)"
+    info "Running PX4's ubuntu.sh dependency installer"
+    info "(ubuntu.sh uses sudo internally and will prompt for your password)"
     bash "$PX4_DIR/Tools/setup/ubuntu.sh" || warn "ubuntu.sh reported issues; continuing."
 
     info "Pre-building PX4 SITL + JMavSim so the first fuzzing run is fast"

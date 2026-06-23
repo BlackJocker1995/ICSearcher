@@ -83,6 +83,26 @@ pyproject.toml            Project manifest (deps + icsearcher-* console entry po
 - **Simulators:** ArduPilot SITL and/or PX4-Autopilot with JMavSim. The
   bootstrap script builds them for you (see Step 2).
 
+### Prerequisites (system packages — install once, needs sudo)
+
+Before anything else, install the system build tools. This is the **only** step
+that needs `sudo`; the project scripts themselves run as your normal user (the
+firmware's own setup scripts, invoked later, will prompt for sudo internally).
+
+```bash
+sudo apt-get update
+sudo apt-get install -y --no-install-recommends \
+    git \
+    python3 python3-pip python3-dev python3-venv \
+    build-essential \
+    ccache \
+    wget curl
+```
+
+That's the minimal set to clone repos, run the firmware setup scripts, and build
+any Python source wheels. The firmware installers pull in the rest (cmake,
+ninja, simulator libraries, …) themselves.
+
 ---
 
 ## Deployment walkthrough
@@ -171,11 +191,12 @@ The script:
 5. **Rewrites `data/config.yaml`** so `paths:` points at `sims/ardupilot`,
    `sims/PX4-Autopilot`, and `sims/data` — no manual editing needed.
 
-Run it once **as your normal user** (the account must be able to `sudo` — the
-script prompts for the password only when it runs `apt-get`). Do **not** run the
-whole script under `sudo` (`sudo ./scripts/...`): it would run `uv`/builds as
-root, which breaks the project venv. The script already escalates internally
-where needed (`sudo apt-get ...`). The first build downloads a compiler
+Run it as your **normal user** (the same one that ran the Prerequisites
+`sudo apt-get`). The script itself does not use `sudo` — but the firmware
+repos' own setup scripts (ArduPilot's `install-prereqs-ubuntu.sh` and PX4's
+`ubuntu.sh`) do, and will prompt for your password when they run. Do **not**
+wrap the whole script in `sudo` (`sudo ./scripts/...`): it would run `uv`/builds
+as root and break the project venv. The first build downloads a compiler
 toolchain and is slow (20–60 min); later pipeline runs reuse the binaries.
 
 > **`权限不够` / permission denied?** The script needs its executable bit. If
