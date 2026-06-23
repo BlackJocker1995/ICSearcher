@@ -7,6 +7,7 @@ modules during the staged refactor are bridged into loguru so nothing is
 silenced.
 """
 import logging
+import os
 import sys
 
 from loguru import logger
