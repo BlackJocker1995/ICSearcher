@@ -4,11 +4,12 @@ import multiprocessing
 import os
 import random
 import shutil
-import time
+from concurrent.futures import ProcessPoolExecutor
+from dataclasses import dataclass
+from typing import List
 
 import numpy as np
 import pandas as pd
-import ray
 from loguru import logger
 from pymavlink import mavutil, mavwp
 from pymavlink.DFReader import DFMessage
@@ -18,6 +19,31 @@ from tqdm import tqdm
 
 from icsearcher.config import toolConfig
 from icsearcher.params import load_param, read_path_specified_file, select_sub_dict
+
+
+def _convert_log_chunk(args):
+    """Module-level worker for parallel log conversion (ProcessPoolExecutor).
+
+    Must be top-level (picklable) — it cannot be a bound method. Reads the
+    firmware mode from the spawned process's config (driven by ICSEARCHER_MODE,
+    since toolConfig is frozen at import). Each log is parsed by the per-firmware
+    extract_log_file and written to <log_path>/csv/<name>.csv.
+    """
+    log_path, file_list, skip, mode = args
+    # Re-derive the config for the worker process so it picks up ICSEARCHER_MODE.
+    from icsearcher.config import ToolConfig
+    cfg = ToolConfig(mode=mode)
+    extractor = GaMavlinkPX4.extract_log_file if cfg.MODE == "PX4" else GaMavlinkAPM.extract_log_file
+    for file in tqdm(file_list):
+        name, _ = file.split('.')
+        if skip and os.path.exists(f'{log_path}/csv/{name}.csv'):
+            continue
+        try:
+            csv_data = extractor(log_path + f'/{file}')
+            csv_data.to_csv(f'{log_path}/csv/{name}.csv', index=False)
+        except Exception as e:
+            logger.warning(f"Error processing {file} : {e}")
+            continue
 
 
 class DroneMavlink:
@@ -283,51 +309,27 @@ class DroneMavlink:
 
     @staticmethod
     def extract_log_path(log_path, skip=True, threat=None):
-        """
-        extract and convert bin file to csv
-        :param skip:
-        :param log_path:
-        :param threat: multiple threat
-        :return:
-        """
+        """Extract and convert raw flight logs (.BIN / .ulg) to CSV.
 
-        # If px4, the log is ulg, if ardupilot the log is bin
+        Args:
+            log_path: directory holding the raw logs.
+            skip: if True, skip logs whose CSV already exists.
+            threat: number of parallel worker processes (None = serial).
+        """
         if toolConfig.MODE == "PX4":
             file_list = read_path_specified_file(log_path, 'ulg')
         else:
             file_list = read_path_specified_file(log_path, 'BIN')
-        if not os.path.exists(f"{log_path}/csv"):
-            os.makedirs(f"{log_path}/csv")
+        os.makedirs(f"{log_path}/csv", exist_ok=True)
 
-        # multiple
         if threat is not None:
-            arrays = np.array_split(file_list, threat)
-            threat_manage = []
-            ray.init(include_dashboard=True, dashboard_host="127.0.0.1", dashboard_port=8088)
-
-            for array in arrays:
-                if toolConfig.MODE == "PX4":
-                    threat_manage.append(GaMavlinkPX4.extract_log_path_threat.remote(log_path, array, skip))
-                else:
-                    threat_manage.append(GaMavlinkAPM.extract_log_path_threat.remote(log_path, array, skip))
-            ray.get(threat_manage)
-            ray.shutdown()
+            # Parallel conversion via ProcessPoolExecutor (replaces Ray).
+            chunks = [c for c in np.array_split(file_list, threat) if len(c)]
+            args = [(log_path, list(chunk), skip, toolConfig.MODE) for chunk in chunks]
+            with ProcessPoolExecutor(max_workers=threat) as pool:
+                list(pool.map(_convert_log_chunk, args))
         else:
-            # 列出文件夹内所有.BIN结尾的文件并排序
-            for file in tqdm(file_list):
-                name, _ = file.split('.')
-                if skip and os.path.exists(f'{log_path}/csv/{name}.csv'):
-                    continue
-                # extract
-                try:
-                    if toolConfig.MODE == "PX4":
-                        csv_data = GaMavlinkPX4.extract_log_file(log_path + f'/{file}')
-                    else:
-                        csv_data = GaMavlinkAPM.extract_log_file(log_path + f'/{file}')
-                    csv_data.to_csv(f'{log_path}/csv/{name}.csv', index=False)
-                except Exception as e:
-                    logger.warning(f"Error processing {file} : {e}")
-                    continue
+            _convert_log_chunk((log_path, list(file_list), skip, toolConfig.MODE))
 
 
 class GaMavlinkAPM(DroneMavlink, multiprocessing.Process):
@@ -465,21 +467,6 @@ class GaMavlinkAPM(DroneMavlink, multiprocessing.Process):
         # Switch sequence, fill,  and return
         pd_array = GaMavlinkAPM.fill_and_process_pd_log(pd_array)
         return pd_array
-
-    @staticmethod
-    @ray.remote
-    def extract_log_path_threat(log_path, file_list, skip):
-        for file in tqdm(file_list):
-            name, _ = file.split('.')
-            if skip and os.path.exists(f'{log_path}/csv/{name}.csv'):
-                continue
-            try:
-                csv_data = GaMavlinkAPM.extract_log_file(log_path + f'/{file}')
-                csv_data.to_csv(f'{log_path}/csv/{name}.csv', index=False)
-            except Exception as e:
-                logger.warning(f"Error processing {file} : {e}")
-                continue
-        return True
 
     @staticmethod
     def extract_log_file_des_and_ach(log_file):
@@ -760,21 +747,6 @@ class GaMavlinkPX4(DroneMavlink, multiprocessing.Process):
         param_name.sort(key=lambda item: param_seq.index(item))
 
         return df_array
-
-    @staticmethod
-    @ray.remote
-    def extract_log_path_threat(log_path, file_list, skip):
-        for file in tqdm(file_list):
-            name, _ = file.split('.')
-            if skip and os.path.exists(f'{log_path}/csv/{name}.csv'):
-                continue
-            try:
-                csv_data = GaMavlinkPX4.extract_log_file(log_path + f'/{file}')
-                csv_data.to_csv(f'{log_path}/csv/{name}.csv', index=False)
-            except Exception as e:
-                logger.warning(f"Error processing {file} : {e}")
-                continue
-        return True
 
     @classmethod
     def delete_current_log(cls):
