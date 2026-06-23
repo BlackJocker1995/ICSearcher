@@ -69,6 +69,8 @@ class ToolConfig:
     def __init__(self, mode=None):
         self.__dict__["yaml_config"] = self._load_yaml_config()
         self._init_defaults()
+        # If paths from yaml don't exist, try to auto-detect from sims/.
+        self._detect_sims()
         # Resolve the definitive mode once: explicit arg > env var > yaml.
         resolved = mode or os.environ.get("ICSEARCHER_MODE") or self.__dict__["MODE"]
         if resolved not in VALID_MODES:
@@ -175,6 +177,36 @@ class ToolConfig:
         self.__dict__["CLUSTER_CHOICE_NUM"] = self._get_yaml_value('cluster_choice_num', default=10)
         self.__dict__["INPUT_LEN"] = model.get('input_len', 4)
         self.__dict__["OUTPUT_LEN"] = model.get('output_len', 1)
+
+	# ------------------------------------------------------------------ sims auto-detect
+    def _detect_sims(self):
+        """Override non-existent paths with ones under ``sims/`` if available.
+
+        If the user has run ``setup_sims.sh`` (or manually placed the simulators
+        in ``sims/``), the default hardcoded paths in ``config.yaml`` likely don't
+        exist — they point at home-directory locations from the template. This
+        method checks each path and, if missing, looks for the equivalent under
+        ``REPO_ROOT / sims / ...`` and uses that instead.
+        """
+        sims = REPO_ROOT / "sims"
+        if not sims.is_dir():
+            return  # nothing to auto-detect
+
+        def _lookup(key, sims_rel):
+            """If the current path for *key* doesn't exist, try sims/sims_rel."""
+            cur = self.__dict__.get(key)
+            if cur and os.path.exists(cur):
+                return  # already valid
+            candidate = sims / sims_rel
+            if candidate.exists():
+                self.__dict__[key] = str(candidate)
+                print(f"  auto-detected {key} = {candidate}")
+
+        _lookup("ARDUPILOT_LOG_PATH", "data")
+        _lookup("SITL_PATH",          "ardupilot/Tools/autotest/sim_vehicle.py")
+        _lookup("PX4_RUN_PATH",       "PX4-Autopilot")
+        _lookup("JMAVSIM_PATH",       "PX4-Autopilot/Tools/jmavsim_run.sh")
+        _lookup("MORSE_PATH",         "ardupilot/libraries/SITL/examples/Morse/quadcopter.py")
 
     # ------------------------------------------------------------------ mode
     def _apply_mode(self, mode):
