@@ -12,7 +12,25 @@ readme = "README.md"
 repository = "https://github.com/BlackJoker1995/ParameterRecommendation"
 packages = [
     { include = "icsearcher" },
+    { include = "pipelines" },
 ]
+
+# Console entry points so each pipeline runs as `uv run <command>` (no `python`,
+# no path) once the project is installed (`uv sync` / `poetry install`):
+#   uv run icsearcher-collect
+#   uv run icsearcher-convert
+#   uv run icsearcher-train extract
+#   uv run icsearcher-fuzz
+#   uv run icsearcher-validate pre
+#   uv run icsearcher-validate validate --device 1
+#   uv run icsearcher-range
+[tool.poetry.scripts]
+icsearcher-collect  = "pipelines.__main__:collect"
+icsearcher-convert  = "pipelines.__main__:convert"
+icsearcher-train    = "pipelines.__main__:train"
+icsearcher-fuzz     = "pipelines.__main__:fuzz"
+icsearcher-validate = "pipelines.__main__:validate"
+icsearcher-range    = "pipelines.__main__:range_stage"
 
 # PyTorch CUDA 12.1 index. Used ONLY by the optional `cuda` group below so that
 # the default install pulls the CPU wheel from PyPI. Change the url suffix
@@ -23,7 +41,7 @@ url = "https://download.pytorch.org/whl/cu121"
 priority = "explicit"
 
 [tool.poetry.dependencies]
-python = ">=3.9,<3.13"
+python = ">=3.9"
 
 # Core scientific stack
 numpy = ">=1.24,<2.0"

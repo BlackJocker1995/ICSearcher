@@ -65,10 +65,10 @@ icsearcher/               Core package
   search/                 GA fuzzing engine (problem, searcher, fuzzer, io)
   range/                  NSGA-II range derivation (problem, searcher)
 data/                     config.yaml, param_*.json, mission*.txt, fitCollection*.txt
-pipelines/                The six stage entry points (0_collect .. 5_range)
+pipelines/                The six stage entry points (collect, convert, train, fuzz, validate, range)
 scripts/setup_sims.sh     Bootstrap: clone & build ArduPilot SITL and PX4 + JMavSim
 tests/                    Pure-function unit tests (no SITL required)
-pyproject.toml            Poetry project manifest (all dependencies declared here)
+pyproject.toml            Project manifest (deps + icsearcher-* console entry points)
 ```
 
 ---
@@ -90,50 +90,51 @@ pyproject.toml            Poetry project manifest (all dependencies declared her
 
 ### Step 1 — Install the Python environment
 
-All Python dependencies are declared in `pyproject.toml` and managed by
-[Poetry](https://python-poetry.org).
+All Python dependencies are declared in `pyproject.toml`. The project works with
+either [uv](https://docs.astral.sh/uv/) (recommended, faster) or
+[Poetry](https://python-poetry.org). Below is the **uv** flow.
 
 ```bash
-# 1a. Install Poetry (if you don't already have it)
-curl -sSL https://install.python-poetry.org | python3 -
+# 1a. Install uv (if you don't already have it)
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 1b. From the repository root, lock the dependency tree
+# 1b. From the repository root, sync the project + a PyTorch backend (pick ONE)
 cd ICSearcher
-poetry lock        # resolves the full dependency tree -> poetry.lock
-
-# 1c. Install the project + a PyTorch backend (pick ONE — see below)
-poetry install --with cpu    # CPU build, or
-poetry install --with cuda   # CUDA 12.1 build
+uv sync --group cpu     # CPU build, or
+uv sync --group cuda    # CUDA 12.1 build
 ```
 
-This installs the scientific stack (numpy, pandas, scipy, scikit-learn), the
-drone-comms stack (pymavlink, pyulog, pexpect), the GA engine (pymoo), and dev
-tools (pytest). **PyTorch is not pulled in by a bare `poetry install`** — you
-choose one backend explicitly:
+`uv sync` resolves the dependency tree, creates `.venv`, installs the project
+(plus its `icsearcher-*` console commands), and writes `uv.lock`. This brings in
+the scientific stack (numpy, pandas, scipy, scikit-learn), the drone-comms stack
+(pymavlink, pyulog, pexpect), the GA engine (pymoo), and dev tools (pytest).
+**PyTorch is pulled in by exactly one of the two groups — they are mutually
+exclusive:**
 
 ```bash
 # Option A — CPU build (no GPU required)
-poetry install --with cpu
+uv sync --group cpu
 
 # Option B — CUDA 12.1 build (NVIDIA GPU required)
-poetry install --with cuda
+uv sync --group cuda
 ```
 
-The two groups are mutually exclusive — install exactly one. The surrogate model
-auto-selects the device at runtime (CUDA when available, otherwise CPU), so the
-rest of the pipeline is identical for both.
+The surrogate model auto-selects the device at runtime (CUDA when available,
+otherwise CPU), so the rest of the pipeline is identical for both.
 
 > **Different CUDA toolkit?** `pyproject.toml` pins the CUDA index to `cu121` via
 > an explicit `[[tool.poetry.source]]`. For a different toolkit, edit that URL's
 > suffix (`cu118` / `cu124`).
 >
-> **CUDA install trouble?** A known Poetry limitation
-> ([python-poetry/poetry#10086](https://github.com/python-poetry/poetry/issues/10086))
-> can block the CUDA wheel. Fall back to:
+> **CUDA install trouble?** Fall back to installing the CUDA wheel manually after
+> a CPU sync:
 > ```bash
-> poetry install --with cpu
-> poetry run pip install torch --index-url https://download.pytorch.org/whl/cu121
+> uv sync --group cpu
+> uv pip install torch --index-url https://download.pytorch.org/whl/cu121
 > ```
+>
+> **Prefer Poetry?** The same groups work: `poetry install --with cpu` /
+> `poetry install --with cuda`. Then prefix commands with `poetry run`.
 
 > **Optional TCN backend.** A TCN surrogate (`CyTCN`) is available but no longer
 > needs an external package — it ships as a built-in `Conv1d` head in
@@ -198,7 +199,7 @@ paths:
 > **Quick mode switch without editing the file:** set the `ICSEARCHER_MODE`
 > environment variable before running any stage:
 > ```bash
-> ICSEARCHER_MODE=Ardupilot poetry run python pipelines/0_collect.py
+> ICSEARCHER_MODE=Ardupilot uv run icsearcher-collect
 > ```
 > Priority is: env var > `data/config.yaml`'s `mode` field.
 
@@ -206,33 +207,37 @@ See [Configuration reference](#configuration-reference) for every field.
 
 ### Step 4 — Run the pipeline
 
-Run the stages in order. Replace `poetry run python` with `python` if you've
-activated the venv directly. The firmware is taken from `data/config.yaml`.
+Run the stages in order. Each stage is a console command — no `python` or path
+needed (the `icsearcher-*` entry points are installed by `uv sync`):
 
 ```bash
 # Stage 0 — collect flight logs (launches SITL ~500 times)
-poetry run python pipelines/0_collect.py
+uv run icsearcher-collect
 
 # Stage 1 — convert raw logs (.BIN / .ulg) to CSV
-poetry run python pipelines/1_convert.py
+uv run icsearcher-convert
 
 # Stage 2 — feature engineering + training (run each sub-step in order)
-poetry run python pipelines/2_train.py extract      # build features + fit the scaler
-poetry run python pipelines/2_train.py split        # split features into train/test
-poetry run python pipelines/2_train.py raw_split    # carve held-out raw test segments
-poetry run python pipelines/2_train.py train        # train the LSTM surrogate
+uv run icsearcher-train extract      # build features + fit the scaler
+uv run icsearcher-train split        # split features into train/test
+uv run icsearcher-train raw_split    # carve held-out raw test segments
+uv run icsearcher-train train        # train the LSTM surrogate
 
 # Stage 3 — surrogate-guided fuzzing
-poetry run python pipelines/3_fuzz.py
+uv run icsearcher-fuzz
 
 # Stage 4 — select candidates, then validate each in real SITL
-poetry run python pipelines/4_validate.py pre                  # cluster-select candidates
-poetry run python pipelines/4_validate.py validate             # validate in SITL
-poetry run python pipelines/4_validate.py validate --device 1  # use a specific SITL instance
+uv run icsearcher-validate pre                  # cluster-select candidates
+uv run icsearcher-validate validate             # validate in SITL
+uv run icsearcher-validate validate --device 1  # use a specific SITL instance
 
 # Stage 5 — derive safe parameter ranges via NSGA-II
-poetry run python pipelines/5_range.py
+uv run icsearcher-range
 ```
+
+Prefer the module dispatcher? `uv run python -m pipelines <stage> [args...]`
+works too (e.g. `uv run python -m pipelines train extract`). With Poetry, prefix
+the console commands with `poetry run` instead of `uv run`.
 
 **Outputs** (git-ignored):
 
@@ -273,7 +278,7 @@ poetry run python pipelines/5_range.py
 Pure-function unit tests that do **not** require a live SITL simulator:
 
 ```bash
-poetry run pytest
+uv run pytest        # or: poetry run pytest
 ```
 
 Coverage spans the config loader, parameter scaling, the pymoo problem shapes,
@@ -292,15 +297,15 @@ detector reads flight telemetry over MAVLink, not the 3D view. To see the
 JMavSim window for debugging, remove `HEADLESS=1` from the PX4 branch of
 `icsearcher/sim.py:start_sitl`.
 
-**`poetry.lock` is not committed.** Generate it locally with `poetry lock`
-(the TensorFlow-free dependency graph resolves quickly). Commit it if you want
-reproducible installs across machines.
+**The lockfile is not committed.** Generate it locally with `uv lock`
+(or `poetry lock`); the TensorFlow-free dependency graph resolves quickly.
+Commit it if you want reproducible installs across machines.
 
 **Retrain after upgrading past stage 4.** The surrogate artifact changed from
 `lstm.h5` (Keras) to `lstm.pt` (PyTorch state-dict). Old Keras models are not
-loadable — rerun `pipelines/2_train.py train`.
+loadable — rerun `uv run icsearcher-train train`.
 
-**Multi-instance validation.** `pipelines/4_validate.py validate --device N`
+**Multi-instance validation.** `uv run icsearcher-validate validate --device N`
 runs validation against SITL instance `N` (UDP port 14540+N). The legacy
 `gnome-terminal --tab` multi-tab launcher was removed (its `-e` syntax is
 rejected by modern gnome-terminal); run multiple `--device` instances yourself
