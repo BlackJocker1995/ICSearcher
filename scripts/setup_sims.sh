@@ -113,18 +113,14 @@ install_ardupilot() {
         bash "$ARDUPILOT_DIR/Tools/environment_install/install-prereqs-ubuntu.sh" -y || true
     fi
 
-    info "Installing ArduPilot's Python tools (pymavlink, MAVProxy, dronekit-sitl, pexpect)"
-    # pexpect is required by sim_vehicle.py / pysim; the others drive MAVLink
-    # and SITL. Installed into the user site so the system python3 that
-    # sim_vehicle.py runs under can import them.
-    pip3 install --user --upgrade --break-system-packages \
-        pymavlink MAVProxy dronekit dronekit-sitl pexpect future lxml || \
-        pip3 install --user --upgrade \
-            pymavlink MAVProxy dronekit dronekit-sitl pexpect future lxml
-
     info "Building ArduCopter SITL — first build downloads a toolchain (slow)"
+    info "(ArduPilot's Python tools — MAVProxy, dronekit-sitl, pexpect — come from"
+    info " the project venv via 'uv sync --group ardupilot'; no system pip install.)"
+    # Run sim_vehicle.py inside the project venv so it sees pexpect / pymavlink /
+    # MAVProxy installed there. uv run handles the interpreter + PYTHONPATH.
     ( cd "$ARDUPILOT_DIR" && \
-      python3 "Tools/autotest/sim_vehicle.py" -v ArduCopter -w --no-mission -j"$NJOBS" )
+      uv run --project "$REPO_ROOT" python "Tools/autotest/sim_vehicle.py" \
+          -v ArduCopter -w --no-mission -j"$NJOBS" )
 
     ok "ArduPilot SITL ready: $ARDUPILOT_DIR/Tools/autotest/sim_vehicle.py"
 }

@@ -101,12 +101,17 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # 1b. From the repository root, sync everything
 cd ICSearcher
 uv sync
+
+# 1c. (ArduPilot only) add the firmware build/runtime tools the SITL needs
+uv sync --group ardupilot
 ```
 
 This brings in the scientific stack (numpy, pandas, scipy, scikit-learn), the
 drone-comms stack (pymavlink, pyulog, pexpect), the GA engine (pymoo), the
 surrogate model backend (PyTorch, **CPU wheel from PyPI**), and dev tools
-(pytest). Nothing else to choose.
+(pytest). **PX4-only users can stop at `uv sync`.** ArduPilot users add the
+`ardupilot` group (MAVProxy, dronekit-sitl, etc.) so `sim_vehicle.py` runs
+inside the project venv — no separate system `pip install` needed.
 
 > **Want GPU training?** The default install uses the CPU PyTorch wheel. For an
 > NVIDIA GPU, swap in the CUDA wheel after syncing (uv's single-manifest source

@@ -3,11 +3,18 @@ SimManager Version: 4.0 22-10-24
 """
 import multiprocessing
 import os
+import sys
 import time
 from typing import Type
 
 import pexpect
 from pexpect import spawn
+
+# The project's Python interpreter — used to launch ArduPilot's sim_vehicle.py
+# so it inherits the project venv (where pexpect / pymavlink / MAVProxy live,
+# installed via `uv sync` / `uv sync --group ardupilot`). Avoids a bare
+# `python3` that would miss the venv and fail with ModuleNotFoundError.
+_PY = sys.executable
 
 from icsearcher.comms import GaMavlinkAPM, DroneMavlink
 from icsearcher.config import toolConfig
@@ -83,26 +90,26 @@ class SimManager(object):
         if toolConfig.MODE == 'Ardupilot':
             if toolConfig.SIM == 'Airsim':
                 if toolConfig.HOME is not None:
-                    cmd = f"python3 {toolConfig.SITL_PATH} -v ArduCopter " \
+                    cmd = f"{_PY} {toolConfig.SITL_PATH} -v ArduCopter " \
                           f"--location={toolConfig.HOME}" \
                           f" -f airsim-copter --out=127.0.0.1:14550 --out=127.0.0.1:14540 " \
                           f" -S {toolConfig.SPEED}"
                 else:
-                    cmd = f"python3 {toolConfig.SITL_PATH} -v ArduCopter -f airsim-copter " \
+                    cmd = f"{_PY} {toolConfig.SITL_PATH} -v ArduCopter -f airsim-copter " \
                           f"--out=127.0.0.1:14550 --out=127.0.0.1:14540 -S {toolConfig.SPEED}"
             if toolConfig.SIM == 'Morse':
-                cmd = f"python3 {toolConfig.SITL_PATH}  -v ArduCopter --model morse-quad " \
+                cmd = f"{_PY} {toolConfig.SITL_PATH}  -v ArduCopter --model morse-quad " \
                       f"--add-param-file=/home/rain/ardupilot/libraries/SITL/examples/Morse/quadcopter.parm  " \
                       f"--out=127.0.0.1:14550 -S {toolConfig.SPEED}"
             if toolConfig.SIM == 'Gazebo':
-                cmd = f'python3 {toolConfig.SITL_PATH} -f gazebo-iris -v ArduCopter ' \
+                cmd = f'{_PY} {toolConfig.SITL_PATH} -f gazebo-iris -v ArduCopter ' \
                       f'--out=127.0.0.1:14550 -S {toolConfig.SPEED}'
             if toolConfig.SIM == 'SITL':
                 if toolConfig.HOME is not None:
-                    cmd = f"python3 {toolConfig.SITL_PATH}  --location={toolConfig.HOME} " \
+                    cmd = f"{_PY} {toolConfig.SITL_PATH}  --location={toolConfig.HOME} " \
                           f"--out=127.0.0.1:14550 --out=127.0.0.1:14540 -v ArduCopter -w -S {toolConfig.SPEED} "
                 else:
-                    cmd = f"python3 {toolConfig.SITL_PATH}  " \
+                    cmd = f"{_PY} {toolConfig.SITL_PATH}  " \
                           f"--out=127.0.0.1:14550 --out=127.0.0.1:14540 -v ArduCopter -w -S {toolConfig.SPEED} "
             self._sitl_task = pexpect.spawn(cmd, cwd=toolConfig.ARDUPILOT_LOG_PATH, timeout=30, encoding='utf-8')
 
@@ -143,11 +150,11 @@ class SimManager(object):
                 os.remove(f"{toolConfig.ARDUPILOT_LOG_PATH}/mav.parm")
 
             if toolConfig.HOME is not None:
-                cmd = f"python3 {toolConfig.SITL_PATH} --location={toolConfig.HOME} " \
+                cmd = f"{_PY} {toolConfig.SITL_PATH} --location={toolConfig.HOME} " \
                       f"--out=127.0.0.1:1455{drone_i} --out=127.0.0.1:1454{drone_i} " \
                       f"-v ArduCopter -w -S {toolConfig.SPEED} --instance {drone_i}"
             else:
-                cmd = f"python3 {toolConfig.SITL_PATH} " \
+                cmd = f"{_PY} {toolConfig.SITL_PATH} " \
                       f"--out=127.0.0.1:1455{drone_i} --out=127.0.0.1:1454{drone_i} " \
                       f"-v ArduCopter -w -S {toolConfig.SPEED} --instance {drone_i}"
 

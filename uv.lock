@@ -619,6 +619,33 @@ wheels = [
 ]
 
 [[package]]
+name = "dronekit"
+version = "2.9.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "monotonic" },
+    { name = "pymavlink" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/97/62/93ac7ff4144b801f436a9233b7bb3166d0a14c0a80846e4a51091acece12/dronekit-2.9.2.tar.gz", hash = "sha256:53d037241a86bf366a385c5bad7949536a4715e49111204d78d936c11fac4b51", size = 44423, upload-time = "2019-03-18T10:19:53.294Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a6/4a/74ef556f76d38c149e4ca38ff3bf25be5723c63835f51eec42c7c5f1c466/dronekit-2.9.2-py3-none-any.whl", hash = "sha256:97542ad03a7584287d878f2082f8533e41b2ba77881b06bfbd5594bfbd75434f", size = 56853, upload-time = "2019-03-18T10:19:46.132Z" },
+]
+
+[[package]]
+name = "dronekit-sitl"
+version = "3.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "dronekit" },
+    { name = "psutil" },
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/de/f2/2d7b0cb4e4ed158f380ce4f5a1faba9a0b4172a06abca26a40344674ce7f/dronekit_sitl-3.3.0.tar.gz", hash = "sha256:f864e57a184874d3624b3efda7366c875ceddbfe777cccc4de37c25d706b2c11", size = 33344, upload-time = "2019-03-18T10:22:46.439Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1c/ef/99b1881187910099c22dc763ea8e61eff0947ced2d59105315acbc2f79cd/dronekit_sitl-3.3.0-py3-none-any.whl", hash = "sha256:eec766bda2417c1f32621efdeed1138d46f05d757630ca65b598feb272b80bc7", size = 38686, upload-time = "2019-03-18T10:22:44.624Z" },
+]
+
+[[package]]
 name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -859,6 +886,15 @@ wheels = [
 ]
 
 [[package]]
+name = "future"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a7/b2/4140c69c6a66432916b26158687e821ba631a4c9273c474343badf84d3ba/future-1.0.0.tar.gz", hash = "sha256:bd2968309307861edae1458a4f8a4f3598c03be43b97521076aebf5d94c07b05", size = 1228490, upload-time = "2024-02-21T11:52:38.461Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/da/71/ae30dadffc90b9006d77af76b393cb9dfbfc9629f339fc1574a1c52e6806/future-1.0.0-py3-none-any.whl", hash = "sha256:929292d34f5872e70396626ef385ec22355a1fae8ad29e1a734c3e43f9fbc216", size = 491326, upload-time = "2024-02-21T11:52:35.956Z" },
+]
+
+[[package]]
 name = "graphemeu"
 version = "0.7.2"
 source = { registry = "https://pypi.org/simple" }
@@ -897,6 +933,13 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
+ardupilot = [
+    { name = "dronekit" },
+    { name = "dronekit-sitl" },
+    { name = "future" },
+    { name = "mavproxy", version = "1.8.70", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "mavproxy", version = "1.8.74", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+]
 dev = [
     { name = "black", version = "25.11.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "black", version = "26.5.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
@@ -924,6 +967,12 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
+ardupilot = [
+    { name = "dronekit", specifier = ">=2.9" },
+    { name = "dronekit-sitl", specifier = ">=3.3" },
+    { name = "future", specifier = ">=1.0" },
+    { name = "mavproxy", specifier = ">=1.8" },
+]
 dev = [
     { name = "black", specifier = ">=23.10" },
     { name = "pytest", specifier = ">=7.4" },
@@ -1447,6 +1496,54 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/0f/c2/f5da6cd37ed6871f5c9b3c0507ddb69f14d6c36fac4541e4e0c60cb8cdfc/matplotlib-3.11.0-pp311-pypy311_pp73-macosx_10_15_x86_64.whl", hash = "sha256:81ae77077a1e16d37a5b61096ccb07c8d90a99b518fa8256b8f21578932f2f62", size = 9434094, upload-time = "2026-06-12T02:29:09.135Z" },
     { url = "https://files.pythonhosted.org/packages/f8/07/56f66906e0f87a0c6d0d0acbd34dbc9432b1931d8f26ef618bd6f92932a9/matplotlib-3.11.0-pp311-pypy311_pp73-macosx_11_0_arm64.whl", hash = "sha256:ddef37840695f5eef65f9f070fe2d2f510f584c2156203f9f622a5b0584efffd", size = 9262183, upload-time = "2026-06-12T02:29:11.283Z" },
     { url = "https://files.pythonhosted.org/packages/0c/d8/c4ecab06b7ea36a570c4f3bd2d48d1799fd5d9174470e45c2194199431e7/matplotlib-3.11.0-pp311-pypy311_pp73-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:cf662e5ac5707658cb931e19972c4bd99f7b4f8b7bf79d3c821d239fa6b71e64", size = 10015653, upload-time = "2026-06-12T02:29:13.251Z" },
+]
+
+[[package]]
+name = "mavproxy"
+version = "1.8.70"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version < '3.10'",
+]
+dependencies = [
+    { name = "numpy", marker = "python_full_version < '3.10'" },
+    { name = "pymavlink", marker = "python_full_version < '3.10'" },
+    { name = "pyserial", marker = "python_full_version < '3.10'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3f/03/29c21015876cf3315924fd25f6ce974396033cac406b0283d1f8de89e6ac/MAVProxy-1.8.70.tar.gz", hash = "sha256:5392bed25c496c1bf01139c9dcc4cc924e3b08c39294905e16b08b1d6f4e4a1f", size = 6913833, upload-time = "2024-02-27T03:17:51.753Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/59/ac/07e35b29ddbc3601db80fd1b704f1937ecb03f19b7df8c0a054538182e39/MAVProxy-1.8.70-py3-none-any.whl", hash = "sha256:c0f735363e5120826ec32e665cc13c48d79385588a82cad632803480fa5e0fa7", size = 7202413, upload-time = "2024-02-27T03:17:48.05Z" },
+]
+
+[[package]]
+name = "mavproxy"
+version = "1.8.74"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.12' and sys_platform == 'win32'",
+    "python_full_version == '3.11.*' and sys_platform == 'win32'",
+    "python_full_version >= '3.11' and sys_platform == 'emscripten'",
+    "python_full_version >= '3.11' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version == '3.10.*'",
+]
+dependencies = [
+    { name = "numpy", marker = "python_full_version >= '3.10'" },
+    { name = "pymavlink", marker = "python_full_version >= '3.10'" },
+    { name = "pynmeagps", marker = "python_full_version >= '3.10'" },
+    { name = "pyserial", marker = "python_full_version >= '3.10'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/84/45/bcc0fb129d21bc750f2752c963c35b706c2aad8b9b07d81fe0b465e521a0/mavproxy-1.8.74.tar.gz", hash = "sha256:083db2eb11e960987bfd3ec0b0007758531fd93f775141db279af56f0a95a34c", size = 27889926, upload-time = "2025-08-01T23:39:07.263Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5d/ae/a4903e8231cc2563af8f215e4ce89374ac7f5ff5996a372494d74ea53ae3/mavproxy-1.8.74-py3-none-any.whl", hash = "sha256:8951fe9d76fc8f3ba56f993e43c1fc0f559f6cfdb5cc7aca71b96d1d557f0ebb", size = 28764115, upload-time = "2025-08-01T23:39:04.574Z" },
+]
+
+[[package]]
+name = "monotonic"
+version = "1.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ea/ca/8e91948b782ddfbd194f323e7e7d9ba12e5877addf04fb2bf8fca38e86ac/monotonic-1.6.tar.gz", hash = "sha256:3a55207bcfed53ddd5c5bae174524062935efed17792e9de2ad0205ce9ad63f7", size = 7615, upload-time = "2021-08-11T14:37:28.79Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9a/67/7e8406a29b6c45be7af7740456f7f37025f0506ae2e05fb9009a53946860/monotonic-1.6-py2.py3-none-any.whl", hash = "sha256:68687e19a14f11f26d140dd5c86f3dba4bf5df58003000ed467e0e2a69bca96c", size = 8154, upload-time = "2021-04-09T21:58:05.122Z" },
 ]
 
 [[package]]
@@ -2129,6 +2226,22 @@ wheels = [
 ]
 
 [[package]]
+name = "psutil"
+version = "7.2.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/aa/c6/d1ddf4abb55e93cebc4f2ed8b5d6dbad109ecb8d63748dd2b20ab5e57ebe/psutil-7.2.2.tar.gz", hash = "sha256:0746f5f8d406af344fd547f1c8daa5f5c33dbc293bb8d6a16d80b4bb88f59372", size = 493740, upload-time = "2026-01-28T18:14:54.428Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e7/36/5ee6e05c9bd427237b11b3937ad82bb8ad2752d72c6969314590dd0c2f6e/psutil-7.2.2-cp36-abi3-macosx_10_9_x86_64.whl", hash = "sha256:ed0cace939114f62738d808fdcecd4c869222507e266e574799e9c0faa17d486", size = 129090, upload-time = "2026-01-28T18:15:22.168Z" },
+    { url = "https://files.pythonhosted.org/packages/80/c4/f5af4c1ca8c1eeb2e92ccca14ce8effdeec651d5ab6053c589b074eda6e1/psutil-7.2.2-cp36-abi3-macosx_11_0_arm64.whl", hash = "sha256:1a7b04c10f32cc88ab39cbf606e117fd74721c831c98a27dc04578deb0c16979", size = 129859, upload-time = "2026-01-28T18:15:23.795Z" },
+    { url = "https://files.pythonhosted.org/packages/b5/70/5d8df3b09e25bce090399cf48e452d25c935ab72dad19406c77f4e828045/psutil-7.2.2-cp36-abi3-manylinux2010_x86_64.manylinux_2_12_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:076a2d2f923fd4821644f5ba89f059523da90dc9014e85f8e45a5774ca5bc6f9", size = 155560, upload-time = "2026-01-28T18:15:25.976Z" },
+    { url = "https://files.pythonhosted.org/packages/63/65/37648c0c158dc222aba51c089eb3bdfa238e621674dc42d48706e639204f/psutil-7.2.2-cp36-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:b0726cecd84f9474419d67252add4ac0cd9811b04d61123054b9fb6f57df6e9e", size = 156997, upload-time = "2026-01-28T18:15:27.794Z" },
+    { url = "https://files.pythonhosted.org/packages/8e/13/125093eadae863ce03c6ffdbae9929430d116a246ef69866dad94da3bfbc/psutil-7.2.2-cp36-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:fd04ef36b4a6d599bbdb225dd1d3f51e00105f6d48a28f006da7f9822f2606d8", size = 148972, upload-time = "2026-01-28T18:15:29.342Z" },
+    { url = "https://files.pythonhosted.org/packages/04/78/0acd37ca84ce3ddffaa92ef0f571e073faa6d8ff1f0559ab1272188ea2be/psutil-7.2.2-cp36-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:b58fabe35e80b264a4e3bb23e6b96f9e45a3df7fb7eed419ac0e5947c61e47cc", size = 148266, upload-time = "2026-01-28T18:15:31.597Z" },
+    { url = "https://files.pythonhosted.org/packages/b4/90/e2159492b5426be0c1fef7acba807a03511f97c5f86b3caeda6ad92351a7/psutil-7.2.2-cp37-abi3-win_amd64.whl", hash = "sha256:eb7e81434c8d223ec4a219b5fc1c47d0417b12be7ea866e24fb5ad6e84b3d988", size = 137737, upload-time = "2026-01-28T18:15:33.849Z" },
+    { url = "https://files.pythonhosted.org/packages/8c/c7/7bb2e321574b10df20cbde462a94e2b71d05f9bbda251ef27d104668306a/psutil-7.2.2-cp37-abi3-win_arm64.whl", hash = "sha256:8c233660f575a5a89e6d4cb65d9f938126312bca76d8fe087b947b3a1aaac9ee", size = 134617, upload-time = "2026-01-28T18:15:36.514Z" },
+]
+
+[[package]]
 name = "ptyprocess"
 version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2305,12 +2418,30 @@ wheels = [
 ]
 
 [[package]]
+name = "pynmeagps"
+version = "1.1.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/45/4f/a42a5bdd4983d13cf68bfde8a045a61be89bf61682ec18ddcbc746a91075/pynmeagps-1.1.5.tar.gz", hash = "sha256:e903c502e15ec7e8fcbd0bc68121470b548448518d89be5b681a2a8e093984bc", size = 99329, upload-time = "2026-06-12T08:55:42.79Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/93/23/e682493256f56c9a4576838ff52b6585a63e43cbe75664a918f4af2e2807/pynmeagps-1.1.5-py3-none-any.whl", hash = "sha256:8bbe45ba3c64647deee6dfccbd3dc7725de5475372cd7bdf648520da0b22e58a", size = 64672, upload-time = "2026-06-12T08:55:41.326Z" },
+]
+
+[[package]]
 name = "pyparsing"
 version = "3.3.2"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f3/91/9c6ee907786a473bf81c5f53cf703ba0957b23ab84c264080fb5a450416f/pyparsing-3.3.2.tar.gz", hash = "sha256:c777f4d763f140633dcb6d8a3eda953bf7a214dc4eff598413c070bcdc117cbc", size = 6851574, upload-time = "2026-01-21T03:57:59.36Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/10/bd/c038d7cc38edc1aa5bf91ab8068b63d4308c66c4c8bb3cbba7dfbc049f9c/pyparsing-3.3.2-py3-none-any.whl", hash = "sha256:850ba148bd908d7e2411587e247a1e4f0327839c40e2e5e6d05a007ecc69911d", size = 122781, upload-time = "2026-01-21T03:57:55.912Z" },
+]
+
+[[package]]
+name = "pyserial"
+version = "3.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1e/7d/ae3f0a63f41e4d2f6cb66a5b57197850f919f59e558159a4dd3a818f5082/pyserial-3.5.tar.gz", hash = "sha256:3c77e014170dfffbd816e6ffc205e9842efb10be9f58ec16d3e8675b4925cddb", size = 159125, upload-time = "2020-11-23T03:59:15.045Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/07/bc/587a445451b253b285629263eb51c2d8e9bcea4fc97826266d186f96f558/pyserial-3.5-py2.py3-none-any.whl", hash = "sha256:c4451db6ba391ca6ca299fb3ec7bae67a5c55dde170964c7a14ceefec02f2cf0", size = 90585, upload-time = "2020-11-23T03:59:13.41Z" },
 ]
 
 [[package]]

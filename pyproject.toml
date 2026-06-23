@@ -50,6 +50,15 @@ dev = [
     "ruff>=0.1",
     "black>=23.10",
 ]
+# ArduPilot build/runtime tools (sim_vehicle.py, MAVProxy, dronekit-sitl).
+# Install with:  uv sync --group ardupilot
+# PX4-only users can skip this group. pymavlink + pexpect are already main deps.
+ardupilot = [
+    "MAVProxy>=1.8",
+    "dronekit>=2.9",
+    "dronekit-sitl>=3.3",
+    "future>=1.0",
+]
 
 # Tell hatchling which packages to ship (so the entry points resolve).
 [tool.hatch.build.targets.wheel]
