@@ -108,16 +108,14 @@ def run_fuzzing(np_data, num=0):
         obj_population.append(gaOptimizer.population)
 
         print(f'------------------- {i + 1} / {segment_csv.shape[0]} -----------------')
-    out_dir = f'result/{toolConfig.MODE}'
-    os.makedirs(out_dir, exist_ok=True)
-    with open(f'{out_dir}/pop{toolConfig.EXE}.pkl', 'wb') as f:
-        pickle.dump(obj_population, f)
+    from icsearcher.search.io import write_populations
+    write_populations(obj_population)
 
 
 def _load_populations():
     """Load the per-context populations written by run_fuzzing."""
-    with open(f'result/{toolConfig.MODE}/pop{toolConfig.EXE}.pkl', 'rb') as f:
-        return pickle.load(f)
+    from icsearcher.search.io import read_populations
+    return read_populations()
 
 
 def return_best_n_gen(n=1):

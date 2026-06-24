@@ -1,16 +1,16 @@
-"""Typed read/write for the inter-stage pickle artifacts.
+"""Typed read/write for the inter-stage artifacts.
 
-Stage 3 (fuzz) writes per-context GA populations to ``pop{EXE}.pkl``.
-Stage 4 (pre-validate) rewrites that file as a flat candidate set. Historically
-these two writers used *different* list orders (``[obj, var]`` vs
-``[candidate_obj, candidate_var]``), so every reader had to know which writer
-ran last. This module pins a single, documented container and centralizes the
-serialization so the order can never drift again.
+Stage 3 (fuzz) writes per-context GA populations to ``pop{EXE}.npz``.
+Stage 4 (pre-validate) rewrites that file as a flat candidate set.
+
+Uses NumPy's ``.npz`` (compressed binary) instead of pickle — faster to
+read/write for numpy arrays, smaller on disk, and no arbitrary code execution
+risk. Backward-compatible with legacy ``.pkl`` files if present.
 """
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 import numpy as np
 
@@ -38,32 +38,76 @@ class CandidateSet:
 
 
 def _pop_path() -> Path:
-    return Path(f"result/{toolConfig.MODE}/pop{toolConfig.EXE}.pkl")
+    """Return the path to the population/candidate file.
+
+    Prefers ``.npz`` (new format). Falls back to ``.pkl`` (legacy) if the
+    ``.npz`` does not exist but the ``.pkl`` does.
+    """
+    npz = Path(f"result/{toolConfig.MODE}/pop{toolConfig.EXE}.npz")
+    pkl = Path(f"result/{toolConfig.MODE}/pop{toolConfig.EXE}.pkl")
+    if npz.exists():
+        return npz
+    if pkl.exists():
+        return pkl
+    return npz  # default for writing
 
 
 def write_candidates(obj: np.ndarray, var: np.ndarray) -> None:
-    """Persist a CandidateSet as pop{EXE}.pkl."""
+    """Persist a CandidateSet as pop{EXE}.npz (compressed numpy format)."""
     path = _pop_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "wb") as f:
-        pickle.dump(CandidateSet(obj=np.asarray(obj), var=np.asarray(var)), f)
+    np.savez_compressed(path, obj=np.asarray(obj), var=np.asarray(var))
 
 
 def read_candidates() -> CandidateSet:
-    """Load pop{EXE}.pkl.
+    """Load pop{EXE}.npz (or legacy .pkl).
 
-    Accepts both the new CandidateSet container and the legacy two-element list
-    form (``[obj, var]``) produced by older pipeline runs, so existing result
-    files keep loading after the refactor.
+    ``.npz`` format reads ``obj`` and ``var`` arrays directly.
+    Legacy ``.pkl`` accepted: both CandidateSet containers and ``[obj, var]``
+    lists produced by older pipeline runs.
     """
-    with open(_pop_path(), "rb") as f:
+    path = _pop_path()
+    if path.suffix == ".npz":
+        data = np.load(path)
+        return CandidateSet(obj=data["obj"], var=data["var"])
+    # Legacy .pkl back-compat
+    with open(path, "rb") as f:
         data = pickle.load(f)
     if isinstance(data, CandidateSet):
         return data
-    # Legacy [obj, var] list. Be lenient about which side is which by length:
-    # var is the wider array (n_params columns); obj is the scalar score.
-    a, b = data
-    a, b = np.asarray(a), np.asarray(b)
+    a, b = np.asarray(data[0]), np.asarray(data[1])
     if a.ndim == 1 or (a.ndim == 2 and a.shape[1] <= 2 and b.shape[1] > a.shape[1]):
         return CandidateSet(obj=a, var=b)
     return CandidateSet(obj=b, var=a)
+
+
+def write_populations(populations: list) -> None:
+    """Write per-context GA populations (list of PopulationResult) as .npz."""
+    path = Path(f"result/{toolConfig.MODE}/pop{toolConfig.EXE}.npz")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    arrays = {}
+    for i, pop in enumerate(populations):
+        arrays[f"phen_{i}"] = np.asarray(pop.Phen)
+        arrays[f"objv_{i}"] = np.asarray(pop.ObjV)
+    arrays["n_pops"] = np.array(len(populations))
+    np.savez_compressed(path, **arrays)
+
+
+def read_populations() -> list:
+    """Read per-context GA populations from .npz back into PopulationResult."""
+    from icsearcher.search.searcher import PopulationResult
+    path = Path(f"result/{toolConfig.MODE}/pop{toolConfig.EXE}.npz")
+    if path.suffix != ".npz" or not path.exists():
+        # Legacy .pkl fallback
+        pkl = path.with_suffix(".pkl")
+        with open(pkl, "rb") as f:
+            return pickle.load(f)
+    data = np.load(path)
+    n = int(data["n_pops"])
+    pops = []
+    for i in range(n):
+        pops.append(PopulationResult(
+            Phen=data[f"phen_{i}"],
+            ObjV=data[f"objv_{i}"],
+        ))
+    return pops
