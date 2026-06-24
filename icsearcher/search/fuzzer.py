@@ -1,4 +1,5 @@
 import colorsys
+import os
 import pickle
 import random
 from abc import abstractmethod
@@ -107,7 +108,9 @@ def run_fuzzing(np_data, num=0):
         obj_population.append(gaOptimizer.population)
 
         print(f'------------------- {i + 1} / {segment_csv.shape[0]} -----------------')
-    with open(f'result/{toolConfig.MODE}/pop{toolConfig.EXE}.pkl', 'wb') as f:
+    out_dir = f'result/{toolConfig.MODE}'
+    os.makedirs(out_dir, exist_ok=True)
+    with open(f'{out_dir}/pop{toolConfig.EXE}.pkl', 'wb') as f:
         pickle.dump(obj_population, f)
 
 
