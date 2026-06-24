@@ -49,6 +49,13 @@ def test_import_range_problem():
     assert hasattr(mod, "GARangeProblem")
 
 
+def test_import_concurrency():
+    mod = _import("icsearcher.concurrency")
+    assert hasattr(mod, "MultiInstanceRunner")
+    assert hasattr(mod, "LockedCsv")
+    assert hasattr(mod, "WorkerContext")
+
+
 def test_import_icsearcher_modules():
     """Core icsearcher modules import without the removed dead stubs."""
     _import("icsearcher.config")
@@ -58,3 +65,4 @@ def test_import_icsearcher_modules():
     # migration left no NameError behind.
     _import("icsearcher.comms")
     _import("icsearcher.sim")
+    _import("icsearcher.concurrency")

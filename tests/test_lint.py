@@ -9,9 +9,12 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 
 # Directories that are NOT our source: venvs, the cloned firmware under sims/,
-# generated artifacts. Walking into these would (a) be slow and (b) hit
-# non-UTF-8 files (e.g. vendored stubs) and crash the read.
-_SKIP_DIRS = {".git", ".venv", "sims", "model", "result", "fig", "__pycache__"}
+# generated artifacts, and the nyctea/ reference project (a sibling codebase
+# used as the multi-instance design reference, not ICSearcher source). Walking
+# into these would (a) be slow and (b) hit non-UTF-8 files (e.g. vendored
+# stubs) and crash the read, or flag code that isn't ours to lint.
+_SKIP_DIRS = {".git", ".venv", "sims", "model", "result", "fig",
+              "__pycache__", "nyctea"}
 
 
 def _source_files():

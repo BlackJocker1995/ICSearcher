@@ -24,8 +24,20 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 from tqdm import tqdm
 
-from icsearcher.config import toolConfig
+from icsearcher import config as _config_mod
 from icsearcher.params import min_max_scaler
+
+
+def _config():
+    """Lazy config access so per-mode monkeypatching of the singleton works.
+
+    Importing ``toolConfig`` at module top-level binds the singleton object
+    captured at first import, which defeats per-mode monkeypatching (the same
+    reason ``icsearcher.params`` reads it through a function). Reading it
+    through the module at call time picks up any reassignment of
+    ``icsearcher.config.toolConfig``.
+    """
+    return _config_mod.toolConfig
 
 
 class _LSTMNet(nn.Module):
@@ -61,19 +73,20 @@ class Modeling(object):
     def __init__(self, debug: bool = False):
         self._model: nn.Module = None
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.in_out = f"{toolConfig.INPUT_LEN}_{toolConfig.OUTPUT_LEN}"
+        self.in_out = f"{_config().INPUT_LEN}_{_config().OUTPUT_LEN}"
 
     # ------------------------------------------------------------------ data utils
     @classmethod
     def cs_to_sl(cls, values):
         """Convert a continuous series to supervised-learning form."""
+        cfg = _config()
         values = values.astype('float32')
-        if toolConfig.RETRANS:
+        if cfg.RETRANS:
             trans = cls.load_trans()
             values = min_max_scaler(trans, values)
-        reframed = cls.series_to_supervised(values, toolConfig.INPUT_LEN,
-                                            toolConfig.OUTPUT_LEN, True)
-        model_dir = f'model/{toolConfig.MODE}/{toolConfig.INPUT_LEN}_{toolConfig.OUTPUT_LEN}'
+        reframed = cls.series_to_supervised(values, cfg.INPUT_LEN,
+                                            cfg.OUTPUT_LEN, True)
+        model_dir = f'model/{cfg.MODE}/{cfg.INPUT_LEN}_{cfg.OUTPUT_LEN}'
         os.makedirs(model_dir, exist_ok=True)
         return reframed
 
@@ -136,7 +149,7 @@ class Modeling(object):
 
     # ------------------------------------------------------------------ train/predict
     def _model_path(self):
-        return f'model/{toolConfig.MODE}/{self.in_out}/{self._artifact_name()}'
+        return f'model/{_config().MODE}/{self.in_out}/{self._artifact_name()}'
 
     def _ensure_module(self, n_features):
         if self._model is None:
@@ -215,7 +228,7 @@ class Modeling(object):
 
     def predict(self, values):
         predict_X = self._predict_numpy(values)
-        if toolConfig.RETRANS:
+        if _config().RETRANS:
             trans = self.load_trans()
             predict_X = trans.inverse_transform(predict_X)
         return predict_X
@@ -234,7 +247,7 @@ class Modeling(object):
 
     def _n_features(self) -> int:
         """Number of input features per timestep (DATA_LEN)."""
-        return toolConfig.DATA_LEN
+        return _config().DATA_LEN
 
     def status2feature(self, status_data):
         if "TimeS" in status_data.columns:
@@ -267,29 +280,31 @@ class Modeling(object):
     # ------------------------------------------------------------------ scaler
     @staticmethod
     def fit_trans(pd_csv):
+        cfg = _config()
         values = pd_csv.values
-        status_value = values[:, :toolConfig.STATUS_LEN]
+        status_value = values[:, :cfg.STATUS_LEN]
         trans = MinMaxScaler(feature_range=(0, 1))
         trans.fit(status_value)
-        os.makedirs(f"model/{toolConfig.MODE}", exist_ok=True)
-        with open(f'model/{toolConfig.MODE}/trans.pkl', 'wb') as f:
+        os.makedirs(f"model/{cfg.MODE}", exist_ok=True)
+        with open(f'model/{cfg.MODE}/trans.pkl', 'wb') as f:
             pickle.dump(trans, f)
 
     @staticmethod
     def load_trans():
-        with open(f'model/{toolConfig.MODE}/trans.pkl', 'rb') as f:
+        with open(f'model/{_config().MODE}/trans.pkl', 'rb') as f:
             return pickle.load(f)
 
     @staticmethod
     def series2segment_predict(data, has_param=False, dropnan=True):
+        cfg = _config()
         df = pd.DataFrame(data)
         cols = list()
-        for i in range(toolConfig.INPUT_LEN - 1, -1, -1):
+        for i in range(cfg.INPUT_LEN - 1, -1, -1):
             cols.append(df.shift(i))
         agg = pd.concat(cols, axis=1)
         if dropnan:
             agg.dropna(inplace=True)
-        return agg.to_numpy().reshape((-1, toolConfig.INPUT_LEN, toolConfig.DATA_LEN))
+        return agg.to_numpy().reshape((-1, cfg.INPUT_LEN, cfg.DATA_LEN))
 
 
 class CyLSTM(Modeling):
@@ -301,30 +316,33 @@ class CyLSTM(Modeling):
         self.batch_size = batch_size  # kept for API compat; full-batch GD is used
 
     def _build_module(self, n_features: int) -> nn.Module:
+        cfg = _config()
         return _LSTMNet(n_features=n_features,
-                        input_len=toolConfig.INPUT_LEN,
-                        output_len=toolConfig.OUTPUT_DATA_LEN)
+                        input_len=cfg.INPUT_LEN,
+                        output_len=cfg.OUTPUT_DATA_LEN)
 
     def _artifact_name(self) -> str:
         return 'lstm.pt'
 
     def data_split(self, values):
+        cfg = _config()
         if isinstance(values, pd.DataFrame):
             values = values.values
-        X = values[:, :toolConfig.INPUT_DATA_LEN]
-        y = values[:, toolConfig.INPUT_DATA_LEN:]
-        y = y.reshape((y.shape[0], toolConfig.OUTPUT_LEN, -1))
-        Y = y[:, :, :-toolConfig.PARAM_LEN].reshape((y.shape[0], toolConfig.OUTPUT_DATA_LEN))
-        X = X.reshape((X.shape[0], toolConfig.INPUT_LEN, toolConfig.DATA_LEN))
-        Y = Y.reshape((Y.shape[0], toolConfig.OUTPUT_DATA_LEN))
+        X = values[:, :cfg.INPUT_DATA_LEN]
+        y = values[:, cfg.INPUT_DATA_LEN:]
+        y = y.reshape((y.shape[0], cfg.OUTPUT_LEN, -1))
+        Y = y[:, :, :-cfg.PARAM_LEN].reshape((y.shape[0], cfg.OUTPUT_DATA_LEN))
+        X = X.reshape((X.shape[0], cfg.INPUT_LEN, cfg.DATA_LEN))
+        Y = Y.reshape((Y.shape[0], cfg.OUTPUT_DATA_LEN))
         return X, Y
 
     def data_split_3d(self, values):
+        cfg = _config()
         values = values.values if isinstance(values, pd.DataFrame) else values
-        X = values[:, :, :toolConfig.INPUT_DATA_LEN]
-        y = values[:, :, toolConfig.INPUT_DATA_LEN:-toolConfig.PARAM_LEN]
-        X = X.reshape((-1, toolConfig.INPUT_LEN, toolConfig.DATA_LEN))
-        Y = y.reshape((-1, toolConfig.OUTPUT_DATA_LEN))
+        X = values[:, :, :cfg.INPUT_DATA_LEN]
+        y = values[:, :, cfg.INPUT_DATA_LEN:-cfg.PARAM_LEN]
+        X = X.reshape((-1, cfg.INPUT_LEN, cfg.DATA_LEN))
+        Y = y.reshape((-1, cfg.OUTPUT_DATA_LEN))
         return X, Y
 
     @classmethod
@@ -350,6 +368,8 @@ class CyTCN(Modeling):
         self.batch_size = batch_size
 
     def _build_module(self, n_features: int) -> nn.Module:
+        output_len = _config().OUTPUT_DATA_LEN
+
         class _TCNNet(nn.Module):
             def __init__(self_inner):
                 super().__init__()
@@ -359,7 +379,7 @@ class CyTCN(Modeling):
                     nn.Conv1d(64, 64, kernel_size=3, padding=1),
                     nn.ReLU(),
                 )
-                self_inner.fc = nn.Linear(64, toolConfig.OUTPUT_DATA_LEN)
+                self_inner.fc = nn.Linear(64, output_len)
 
             def forward(self, x):
                 # x: (batch, seq, features) -> Conv1d wants (batch, features, seq)
@@ -373,11 +393,12 @@ class CyTCN(Modeling):
         return 'tcn.pt'
 
     def data_split(self, value):
+        cfg = _config()
         values = value.values
-        X = values[:, :toolConfig.INPUT_DATA_LEN]
-        y = values[:, toolConfig.INPUT_DATA_LEN:]
-        y = y.reshape((y.shape[0], toolConfig.OUTPUT_LEN, -1))
-        Y = y[:, :, :-toolConfig.PARAM_LEN].reshape((y.shape[0], toolConfig.OUTPUT_DATA_LEN))
-        X = X.reshape((X.shape[0], toolConfig.INPUT_LEN, toolConfig.DATA_LEN))
-        Y = Y.reshape((Y.shape[0], 1, toolConfig.OUTPUT_DATA_LEN))
+        X = values[:, :cfg.INPUT_DATA_LEN]
+        y = values[:, cfg.INPUT_DATA_LEN:]
+        y = y.reshape((y.shape[0], cfg.OUTPUT_LEN, -1))
+        Y = y[:, :, :-cfg.PARAM_LEN].reshape((y.shape[0], cfg.OUTPUT_DATA_LEN))
+        X = X.reshape((X.shape[0], cfg.INPUT_LEN, cfg.DATA_LEN))
+        Y = Y.reshape((Y.shape[0], 1, cfg.OUTPUT_DATA_LEN))
         return X, Y

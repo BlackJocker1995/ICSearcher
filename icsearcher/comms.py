@@ -531,15 +531,28 @@ class GaMavlinkAPM(DroneMavlink, multiprocessing.Process):
         return out
 
     @staticmethod
-    def delete_current_log():
-        log_index = f"{toolConfig.ARDUPILOT_LOG_PATH}/logs/LASTLOG.TXT"
+    def delete_current_log(instance_id=None):
+        """Delete the most recent ArduPilot flight log on a failed flight.
+
+        Args:
+            instance_id: if given, operate on the per-instance directory
+                (``ARDUPILOT_LOG_PATH/instance_{i}/logs``) so concurrent
+                multi-instance collectors don't touch each other's logs. If
+                ``None`` (the default), uses the shared ``ARDUPILOT_LOG_PATH``
+                for backward compatibility with single-instance runs.
+        """
+        if instance_id is None:
+            logs_dir = f"{toolConfig.ARDUPILOT_LOG_PATH}/logs"
+        else:
+            logs_dir = toolConfig.ardu_instance_log_path(instance_id)
+        log_index = f"{logs_dir}/LASTLOG.TXT"
 
         # Read last index
         with open(log_index, 'r') as f:
             num = int(f.readline())
         # To string
         num = f'{num}'
-        log_file = f"{toolConfig.ARDUPILOT_LOG_PATH}/logs/{num.rjust(8, '0')}.BIN"
+        log_file = f"{logs_dir}/{num.rjust(8, '0')}.BIN"
         # Remove file
         if os.path.exists(log_file):
             os.remove(log_file)
@@ -689,7 +702,8 @@ class GaMavlinkPX4(DroneMavlink, multiprocessing.Process):
         else:
             now = time.localtime()
             now_time = time.strftime("%Y-%m-%d", now)
-            log_path = f"{toolConfig.PX4_RUN_PATH}/build/px4_sitl_default/instance_{device_i}/log/{now_time}/*.ulg"
+            # Per-instance log dir (matches start_multiple_sitl's instance_{i}).
+            log_path = (f"{toolConfig.px4_instance_path(device_i)}/log/{now_time}/*.ulg")
 
             list_of_files = glob.glob(log_path)  # * means all if need specific format then *.csv
             latest_file = max(list_of_files, key=os.path.getctime)
@@ -770,10 +784,25 @@ class GaMavlinkPX4(DroneMavlink, multiprocessing.Process):
         return df_array
 
     @classmethod
-    def delete_current_log(cls):
-        log_path = f"{toolConfig.PX4_LOG_PATH}/*.ulg"
+    def delete_current_log(cls, instance_id=None):
+        """Delete the most recent PX4 .ulg flight log on a failed flight.
+
+        Args:
+            instance_id: if given, operate on the per-instance log dir
+                (``instance_{i}/log/<date>/``) so concurrent multi-instance
+                collectors don't delete each other's logs. If ``None`` (the
+                default), uses the shared ``PX4_LOG_PATH`` for backward
+                compatibility with single-instance runs.
+        """
+        if instance_id is None:
+            log_path = f"{toolConfig.PX4_LOG_PATH}/*.ulg"
+        else:
+            now_time = time.strftime("%Y-%m-%d", time.localtime())
+            log_path = f"{toolConfig.px4_instance_path(instance_id)}/log/{now_time}/*.ulg"
 
         list_of_files = glob.glob(log_path)  # * means all if need specific format then *.csv
+        if not list_of_files:
+            return
         latest_file = max(list_of_files, key=os.path.getctime)
         # Remove file
         if os.path.exists(latest_file):

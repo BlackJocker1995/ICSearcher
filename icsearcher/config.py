@@ -159,6 +159,45 @@ class ToolConfig:
         rel = self._get_yaml_value('missions', 'fit_collection', self.MODE.lower(), default=name)
         return self.resolve(rel)
 
+    # ------------------------------------------------------------------ multi-instance paths
+    def _instance_subdir(self, i):
+        """Render the per-instance subdirectory name from INSTANCE_DIR."""
+        return self.INSTANCE_DIR.replace('{i}', str(int(i)))
+
+    def ardu_instance_path(self, i):
+        """Per-instance ArduPilot working directory.
+
+        Each concurrent SITL instance gets its own directory under
+        ``ARDUPILOT_LOG_PATH`` so its ``eeprom.bin`` / ``mav.parm`` / ``logs/``
+        do not collide with sibling instances (the legacy multi-instance path
+        shared one cwd, which raced when run in parallel). ``i`` is the
+        0-based instance index.
+        """
+        return os.path.join(self.ARDUPILOT_LOG_PATH, self._instance_subdir(i))
+
+    def ardu_instance_log_path(self, i):
+        """Per-instance ArduPilot ``logs/`` directory (created lazily by callers)."""
+        return os.path.join(self.ardu_instance_path(i), 'logs')
+
+    def px4_instance_path(self, i):
+        """Per-instance PX4 build directory (``instance_{i}`` under the build tree)."""
+        return os.path.join(
+            self.PX4_RUN_PATH, 'build', 'px4_sitl_default',
+            self._instance_subdir(i),
+        )
+
+    # ------------------------------------------------------------------ multi-instance ports
+    # The MAVLink GCS port for instance ``i`` is 14540+i. This is the single
+    # source of truth: both the SITL launch (ArduPilot ``--out``, PX4's
+    # sitl_multiple_run_single.sh wiring) and the MAVLink monitor must agree on
+    # it, or a monitor connects to a dead port (the bug fixed by centralising
+    # the derivation here).
+    BASE_MAVLINK_PORT = 14540
+
+    def mavlink_port(self, i):
+        """MAVLink UDP port the GCS/monitor listens on for instance ``i``."""
+        return self.BASE_MAVLINK_PORT + int(i)
+
     # ------------------------------------------------------------------ defaults
     def _init_defaults(self):
         """Initialize with YAML values or defaults.
@@ -193,6 +232,26 @@ class ToolConfig:
         self.__dict__["CLUSTER_CHOICE_NUM"] = self._get_yaml_value('cluster_choice_num', default=10)
         self.__dict__["INPUT_LEN"] = model.get('input_len', 4)
         self.__dict__["OUTPUT_LEN"] = model.get('output_len', 1)
+
+        # Parallel multi-instance SITL. ``instances`` is how many simulator
+        # processes run concurrently during collect/validate (default 1 keeps
+        # the historical single-instance behaviour). ``instance_dir`` is the
+        # template for the per-instance working directory; ``{i}`` is replaced
+        # by the 0-based instance index. Override the count per-run with the
+        # ``ICSEARCHER_INSTANCES`` env var (priority: env var > yaml).
+        parallel = self._get_yaml_value('parallel', default={}) or {}
+        env_instances = os.environ.get("ICSEARCHER_INSTANCES")
+        if env_instances:
+            try:
+                instances = int(env_instances)
+            except ValueError:
+                raise ValueError(f"ICSEARCHER_INSTANCES must be an int, got {env_instances!r}")
+        else:
+            instances = int(parallel.get('instances', 1))
+        if instances < 1:
+            raise ValueError(f"parallel.instances must be >= 1, got {instances}")
+        self.__dict__["INSTANCES"] = instances
+        self.__dict__["INSTANCE_DIR"] = parallel.get('instance_dir', 'instance_{i}')
 
 	# ------------------------------------------------------------------ sims auto-detect
     def _detect_sims(self):

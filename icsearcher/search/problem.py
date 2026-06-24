@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 from pymoo.core.problem import Problem
 
-from icsearcher.config import toolConfig
+from icsearcher import config as _config_mod
 from icsearcher.params import (
     load_param,
     min_max_scaler_param,
@@ -25,13 +25,23 @@ from icsearcher.params import (
 )
 
 
+def _config():
+    """Lazy config access so per-mode monkeypatching of the singleton works.
+
+    Importing ``toolConfig`` at module top-level binds the singleton captured at
+    first import, which defeats per-mode monkeypatching (the same reason
+    ``icsearcher.params`` reads it through a function).
+    """
+    return _config_mod.toolConfig
+
+
 def reasonable_range_static(param):
     """Restore integer-encoded params to their original (step-scaled) units.
 
     Mirrors the legacy ``ProblemGA.reasonable_range_static`` so the candidate
     selectors in fuzzer.py keep working unchanged.
     """
-    cfg = toolConfig
+    cfg = _config()
     para_dict = load_param()
     param_choice_dict = select_sub_dict(para_dict, cfg.PARAM_PART)
     step_unit = read_unit_from_dict(param_choice_dict)
@@ -86,7 +96,7 @@ class ProblemGA(Problem):
         return x
 
     def _get_predictions(self, x):
-        cfg = toolConfig
+        cfg = _config()
         param = min_max_scaler_param(x)
         merge_data = self._prepare_merge_data(param)
         feature_x, feature_y = self.predictor.data_split_3d(merge_data)
@@ -95,7 +105,7 @@ class ProblemGA(Problem):
         return predicted_feature.reshape(dims), feature_y.reshape(dims)
 
     def _prepare_merge_data(self, param):
-        cfg = toolConfig
+        cfg = _config()
         status = self.status_data.reshape((1, self.status_data.shape[0], -1, cfg.DATA_LEN))
         status = status[:, :, :, :cfg.STATUS_LEN]
         param = param.reshape((param.shape[0], 1, 1, -1))
@@ -111,4 +121,4 @@ class ProblemGA(Problem):
     def reasonable_range(self, param):
         """Restore integer-encoded params to step-scaled original units."""
         np_config = param * self.step
-        return pd.DataFrame(np_config, columns=toolConfig.PARAM_PART)
+        return pd.DataFrame(np_config, columns=_config().PARAM_PART)

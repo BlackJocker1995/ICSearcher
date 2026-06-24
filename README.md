@@ -60,6 +60,7 @@ icsearcher/               Core package
   params.py               Parameter loading / scaling / Location geometry
   comms.py                MAVLink comms + log parsing (DroneMavlink, APM/PX4)
   sim.py                  Simulator lifecycle (SimManager / GaSimManager)
+  concurrency.py          Multi-instance SITL orchestration (multiprocessing + flock)
   anomaly.py              In-flight anomaly detector (decomposed from the monitor)
   model.py                LSTM / TCN surrogate model (PyTorch)
   search/                 GA fuzzing engine (problem, searcher, fuzzer, io)
@@ -223,6 +224,7 @@ needed (the `icsearcher-*` entry points are installed by `uv sync`):
 ```bash
 # Stage 0 — collect flight logs (launches SITL ~500 times)
 uv run icsearcher-collect
+uv run icsearcher-collect --instances 4         # 4 parallel SITLs (faster)
 
 # Stage 1 — convert raw logs (.BIN / .ulg) to CSV
 uv run icsearcher-convert
@@ -239,7 +241,7 @@ uv run icsearcher-fuzz
 # Stage 4 — select candidates, then validate each in real SITL
 uv run icsearcher-validate pre                  # cluster-select candidates
 uv run icsearcher-validate validate             # validate in SITL
-uv run icsearcher-validate validate --device 1  # use a specific SITL instance
+uv run icsearcher-validate validate --instances 4   # 4 parallel SITLs
 
 # Stage 5 — derive safe parameter ranges via NSGA-II
 uv run icsearcher-range
@@ -277,6 +279,8 @@ works too (e.g. `uv run python -m pipelines train extract`).
 | `paths.{airsim,morse}` | Optional alternate simulator launchers. |
 | `model.{input_len,output_len,segment_len,retrans}` | Surrogate model hyperparameters. |
 | `cluster_choice_num` | Candidates sampled per cluster during candidate selection. |
+| `parallel.instances` | Number of concurrent SITL instances for collect/validate (default 1). Override per-run with `ICSEARCHER_INSTANCES` or `--instances`. |
+| `parallel.instance_dir` | Per-instance working subdir template (`{i}` = index, default `instance_{i}`). |
 | `param_files.{ardupilot,px4}` | Parameter-definition JSONs (default `data/param_*.json`). |
 | `missions.fit_collection.{ardupilot,px4}` | Mission files used for fitness collection. |
 
@@ -314,11 +318,24 @@ Commit `uv.lock` if you want reproducible installs across machines.
 `lstm.h5` (Keras) to `lstm.pt` (PyTorch state-dict). Old Keras models are not
 loadable — rerun `uv run icsearcher-train train`.
 
-**Multi-instance validation.** `uv run icsearcher-validate validate --device N`
-runs validation against SITL instance `N` (UDP port 14540+N). The legacy
-`gnome-terminal --tab` multi-tab launcher was removed (its `-e` syntax is
-rejected by modern gnome-terminal); run multiple `--device` instances yourself
-if you want parallel validation.
+**Multi-instance (parallel) collect & validate.** Both SITL-bound stages run
+N simulator instances concurrently — each on its own UDP port (`14540 + i`) and
+in its own working directory, coordinated by a shared counter (collect) or a
+work-stealing queue (validate). Set the count any of these ways (priority:
+flag > env var > yaml):
+
+```bash
+uv run icsearcher-collect --instances 4
+ICSEARCHER_INSTANCES=4 uv run icsearcher-validate validate
+# or set it permanently in data/config.yaml:
+#   parallel:
+#     instances: 4
+```
+
+`validate --instances N` is the parallel mode; the legacy `--device N` path
+runs a single instance bound to instance `N` (UDP port `14540+N`). Per-instance
+ArduPilot state is isolated under `ARDUPILOT_LOG_PATH/instance_{i}/`, PX4 under
+the build tree's `instance_{i}/`, so concurrent instances never collide.
 
 **Logging.** Every module uses [loguru](https://github.com/Delgan/loguru)
 through `icsearcher/logging_config.py`. `setup_logging(debug=...)` configures

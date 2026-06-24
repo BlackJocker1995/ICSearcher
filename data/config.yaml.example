@@ -40,6 +40,15 @@ model:
 
 cluster_choice_num: 10
 
+# Parallel multi-instance SITL. ``instances`` is the number of simulator
+# processes that run concurrently during collect / validate (each gets its own
+# UDP port 14540+i and its own working directory). Default 1 preserves the
+# historical single-instance behaviour. Override per-run with the
+# ICSEARCHER_INSTANCES env var or the --instances flag.
+parallel:
+  instances: 1
+  instance_dir: instance_{i}   # per-instance working subdir; {i} = instance index
+
 # Parameter Files (relative to repo root by default)
 param_files:
   ardupilot: data/param_ardu.json

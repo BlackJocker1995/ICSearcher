@@ -141,56 +141,90 @@ class SimManager(object):
             raise ValueError('Not support mode or simulator')
 
     def start_multiple_sitl(self, drone_i=0):
+        """Launch a single SITL instance bound to the given instance index.
+
+        Each instance gets its own UDP port (``14540 + drone_i`` — see
+        :meth:`icsearcher.config.toolConfig.mavlink_port`) and, to avoid
+        collisions when several instances run concurrently, its own working
+        directory:
+
+        - **ArduPilot**: ``ARDUPILOT_LOG_PATH/instance_{i}/`` holds a private
+          ``eeprom.bin`` / ``mav.parm`` / ``logs/`` (the legacy path reused one
+          shared cwd, which raced under parallel multi-instance runs).
+        - **PX4**: the per-instance build dir ``instance_{i}`` (already used by
+          ``sitl_multiple_run_single.sh``).
+
+        PX4 home/speed are passed via a *per-call* env dict instead of mutating
+        ``os.environ`` globally, so concurrent instances do not overwrite each
+        other's ``PX4_HOME_*``.
         """
-        start multiple simulators (not support PX4 now)
-        :param drone_i:
-        :return:
-        """
+        drone_i = int(drone_i)
+        # One source of truth for the GCS port. ArduPilot's --out ports are
+        # 14550+i (telemetry) and 14540+i (control); the monitor listens on
+        # 14540+i. String-appending the index (e.g. f"1455{drone_i}") only
+        # worked for i < 10 — using mavlink_port() fixes that.
+        gcs_port = toolConfig.mavlink_port(drone_i)
+        tl_port = toolConfig.BASE_MAVLINK_PORT + 10 + drone_i  # 14550 + i
+
         if toolConfig.MODE == 'Ardupilot':
-            if os.path.exists(f"{toolConfig.ARDUPILOT_LOG_PATH}/eeprom.bin"):
-                os.remove(f"{toolConfig.ARDUPILOT_LOG_PATH}/eeprom.bin")
-            if os.path.exists(f"{toolConfig.ARDUPILOT_LOG_PATH}/mav.parm"):
-                os.remove(f"{toolConfig.ARDUPILOT_LOG_PATH}/mav.parm")
+            # Per-instance working directory isolates eeprom.bin / mav.parm /
+            # logs so concurrent instances don't clobber each other.
+            instance_dir = toolConfig.ardu_instance_path(drone_i)
+            os.makedirs(instance_dir, exist_ok=True)
+            for stale in ('eeprom.bin', 'mav.parm'):
+                stale_path = os.path.join(instance_dir, stale)
+                if os.path.exists(stale_path):
+                    os.remove(stale_path)
 
             if toolConfig.HOME is not None:
                 cmd = f"{_PY} {toolConfig.SITL_PATH} --location={toolConfig.HOME} " \
-                      f"--out=127.0.0.1:1455{drone_i} --out=127.0.0.1:1454{drone_i} " \
+                      f"--out=127.0.0.1:{tl_port} --out=127.0.0.1:{gcs_port} " \
                       f"-v ArduCopter -w -S {toolConfig.SPEED} --instance {drone_i}"
             else:
                 cmd = f"{_PY} {toolConfig.SITL_PATH} " \
-                      f"--out=127.0.0.1:1455{drone_i} --out=127.0.0.1:1454{drone_i} " \
+                      f"--out=127.0.0.1:{tl_port} --out=127.0.0.1:{gcs_port} " \
                       f"-v ArduCopter -w -S {toolConfig.SPEED} --instance {drone_i}"
 
-            self._sitl_task = (pexpect.spawn(cmd, cwd=toolConfig.ARDUPILOT_LOG_PATH, timeout=30, encoding='utf-8'))
+            self._sitl_task = (pexpect.spawn(cmd, cwd=instance_dir, timeout=30, encoding='utf-8'))
 
         if toolConfig.MODE == 'PX4':
+            instance_dir = toolConfig.px4_instance_path(drone_i)
+            eeprom = os.path.join(instance_dir, 'eeprom', 'parameters_10016')
+            if os.path.exists(eeprom):
+                os.remove(eeprom)
 
-            if os.path.exists(f"{toolConfig.PX4_RUN_PATH}/build/px4_sitl_default/instance_{drone_i}/eeprom/parameters_10016") \
-                    and toolConfig.MODE == "PX4":
-                os.remove(f"{toolConfig.PX4_RUN_PATH}/build/px4_sitl_default/instance_{drone_i}/eeprom/parameters_10016")
+            cmd = None
+            env = os.environ.copy()
+            env['PX4_SIM_SPEED_FACTOR'] = f"{toolConfig.SPEED}"
+            if toolConfig.HOME is None:
+                env['PX4_HOME_LAT'] = "-35.363261"
+                env['PX4_HOME_LON'] = "149.165230"
+                env['PX4_HOME_ALT'] = "583.730592"
+            else:
+                env['PX4_HOME_LAT'] = "40.072842"
+                env['PX4_HOME_LON'] = "-105.230575"
+                env['PX4_HOME_ALT'] = "0.000000"
 
             if toolConfig.SIM == 'Jmavsim':
                 cmd = f"{toolConfig.PX4_RUN_PATH}/Tools/sitl_multiple_run_single.sh {drone_i}"
-                os.environ['PX4_SIM_SPEED_FACTOR'] = f"{toolConfig.SPEED}"
-                if toolConfig.HOME is None:
-                    os.environ['PX4_HOME_LAT'] = "-35.363261"
-                    os.environ['PX4_HOME_LON'] = "149.165230"
-                    os.environ['PX4_HOME_ALT'] = "583.730592"
-                else:
-                    os.environ['PX4_HOME_LAT'] = "40.072842"
-                    os.environ['PX4_HOME_LON'] = "-105.230575"
-                    os.environ['PX4_HOME_ALT'] = "0.000000"
+                self._sitl_env = env  # retained for debugging / multi-instance runs
 
-            self._sitl_task = pexpect.spawn(cmd, cwd=toolConfig.PX4_RUN_PATH, timeout=30, encoding='utf-8')
+            if cmd is None:
+                raise ValueError(f"PX4 multi-instance requires SIM == 'Jmavsim', got {toolConfig.SIM!r}")
+            # Pass the per-call env so concurrent instances don't overwrite each
+            # other's PX4_HOME_* (the old code mutated os.environ globally).
+            self._sitl_task = pexpect.spawn(cmd, cwd=toolConfig.PX4_RUN_PATH,
+                                            env=env, timeout=30, encoding='utf-8')
 
-        logger.info(f"Start {toolConfig.MODE} --> [{toolConfig.SIM} - {drone_i}]")
+        logger.info(f"Start {toolConfig.MODE} --> [{toolConfig.SIM} - {drone_i}] (port {gcs_port})")
 
     def mav_monitor_init(self, mavlink_class: Type[DroneMavlink] = DroneMavlink, drone_i=0):
+        """Initialise the MAVLink monitor for instance ``drone_i``.
+
+        The port is derived from :meth:`toolConfig.mavlink_port` so it always
+        matches the port the SITL was launched on (see ``start_multiple_sitl``).
         """
-        initial SITL monitor
-        :return:
-        """
-        self.mav_monitor = mavlink_class(14540 + int(drone_i),
+        self.mav_monitor = mavlink_class(toolConfig.mavlink_port(drone_i),
                                          recv_msg_queue=self.sim_msg_queue,
                                          send_msg_queue=self.mav_msg_queue)
         self.mav_monitor.connect()

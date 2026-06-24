@@ -76,7 +76,10 @@ def read_range_from_dict(para_dict):
 
 
 def read_unit_from_dict(para_dict):
-    return para_dict.loc['step'].to_numpy()
+    # Coerce to float: the param JSON mixes integer and decimal step values,
+    # so pandas infers an object dtype, and ``param * step_unit`` then propagates
+    # object dtype — which breaks downstream (np.isfinite, model input, etc.).
+    return para_dict.loc['step'].to_numpy(dtype=float)
 
 
 # Log analysis function
