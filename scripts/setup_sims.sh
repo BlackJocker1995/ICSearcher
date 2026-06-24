@@ -242,19 +242,13 @@ setup_data_dir() {
 }
 
 update_config() {
-    # Generate data/config.yaml from the example template, then rewrite the
-    # paths: block to point at the just-installed locations.
+    # Rewrite the committed data/config.yaml 'paths:' block to point at the
+    # just-installed locations (absolute, so a custom SIM_ROOT works too).
     local cfg="$REPO_ROOT/data/config.yaml"
-    local example="$REPO_ROOT/data/config.yaml.example"
 
     if [[ ! -f "$cfg" ]]; then
-        if [[ -f "$example" ]]; then
-            cp "$example" "$cfg"
-            log "Step D — generating data/config.yaml from config.yaml.example"
-        else
-            warn "No config.yaml or example found; skipping config update."
-            return
-        fi
+        warn "data/config.yaml missing; skipping config update."
+        return
     fi
 
     log "Step D — wiring data/config.yaml to the installed paths"

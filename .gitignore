@@ -5,10 +5,6 @@
 # Simulator installs (created by scripts/setup_sims.sh — large, machine-specific)
 /sims/
 
-# Local config overrides (paths differ per machine — keep data/config.yaml
-# committed as the template, ignore machine-specific copies if you make one)
-/data/config.local.yaml
-
 # Python
 __pycache__/
 *.py[cod]
@@ -27,4 +23,3 @@ poetry.lock.bak
 .idea/
 .vscode/
 *.swp
-/data/config.yaml
