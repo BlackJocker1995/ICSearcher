@@ -39,28 +39,13 @@ def random_choice_dbscan(segment_csv, eps=0.5):
         (-1, segment_csv.shape[1] * segment_csv.shape[2]))
     # Cluster
     clf = DBSCAN(eps=eps, min_samples=5).fit(data_class)
-    # Cluster reuslt
+    # Cluster result
     predicted = clf.labels_
-    logger.info(f'DBSCAN class: {max(predicted)}')
-
-    # ------------- draw ------------------#
-    c = list(map(lambda x: color(tuple(x)), ncolors(max(predicted) + 1)))
-
-    colors = [c[i] for i in predicted]
-
-    pca = PCA(n_components=2, svd_solver='arpack')
-    show = pca.fit_transform(data_class)
-
-    fig = plt.figure()
-    # ax = fig.add_subplot(111, projection='3d')
-    # ax.scatter(show[:, 0], show[:, 1], show[:, 2], c=colors, s=5)
-    plt.scatter(show[:, 0], show[:, 1], c=colors, s=5)
-
-    plt.show()
-    # -------------------------
+    n_clusters = max(predicted) + 1
+    logger.info(f'DBSCAN class: {n_clusters}')
 
     out = []
-    for i in range(max(predicted)):
+    for i in range(n_clusters):
         index = np.where(predicted == i)[0]
         col_index = np.random.choice(index, min(index.shape[0], toolConfig.CLUSTER_CHOICE_NUM))
         select = segment_csv[col_index]
@@ -77,30 +62,13 @@ def random_choice_hierarchical(segment_csv, rate=0.5):
     # clustering
     thresh = 0.3
     predicted = hcluster.fclusterdata(data_class, thresh, criterion="distance")
-    # Cluster reuslt
-    logger.info(f'Meanshift class: {max(predicted)}')
-    # ------------- draw ------------------#
-    for i in range(max(predicted)):
-        index = np.where(predicted == i)[0]
-
-    c = list(map(lambda x: color(tuple(x)), ncolors(max(predicted) + 1)))
-
-    colors = [c[i] for i in predicted]
-
-    pca = PCA(n_components=2, svd_solver='arpack')
-    show = pca.fit_transform(data_class)
-
-    fig = plt.figure()
-    # ax = fig.add_subplot(111, projection='3d')
-    # ax.scatter(show[:, 0], show[:, 1], show[:, 2], c=colors, s=5)
-    plt.scatter(show[:, 0], show[:, 1], c=colors, s=5)
-
-    plt.show()
-    # -------------------------
+    # Cluster result
+    n_clusters = max(predicted)
+    logger.info(f'Hierarchical class: {n_clusters}')
 
     out = []
-    for i in range(max(predicted)):
-        index = np.where(predicted == i)[0]
+    for i in range(n_clusters):
+        index = np.where(predicted == i + 1)[0]
         col_index = np.random.choice(index, min(index.shape[0], toolConfig.CLUSTER_CHOICE_NUM))
         select = segment_csv[col_index]
         out.extend(select)
