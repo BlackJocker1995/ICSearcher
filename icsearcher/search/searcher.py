@@ -15,7 +15,7 @@ from dataclasses import dataclass
 import numpy as np
 from pymoo.algorithms.soo.nonconvex.de import DE
 from pymoo.optimize import minimize
-from pymoo.operators.sampling.base import Sampling
+from pymoo.core.sampling import Sampling
 
 from icsearcher.config import toolConfig
 from icsearcher.params import (
