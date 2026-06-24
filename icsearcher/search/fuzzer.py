@@ -14,7 +14,7 @@ from loguru import logger
 from icsearcher.config import toolConfig
 from icsearcher.sim import GaSimManager
 from icsearcher.params import min_max_scaler_param
-from icsearcher.model import CyLSTM, Modeling
+from icsearcher.model import make_predictor, Modeling
 from icsearcher.search.problem import ProblemGA
 from icsearcher.search.searcher import GAOptimizer
 
@@ -84,7 +84,7 @@ def run_fuzzing(np_data, num=0):
         np_data: held-out raw test segments (from stage 2 raw_split).
         num: if non-zero, randomly subsample this many segments before clustering.
     """
-    predictor = CyLSTM(100, 100, toolConfig.DEBUG)
+    predictor = make_predictor(100, 100, toolConfig.DEBUG)
     predictor.read_model()
 
     gaOptimizer = GAOptimizer()

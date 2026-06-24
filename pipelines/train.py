@@ -18,7 +18,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 
 from icsearcher.config import toolConfig
-from icsearcher.model import CyLSTM, Modeling
+from icsearcher.model import make_predictor, Modeling
 
 
 def _feature_dir():
@@ -33,11 +33,11 @@ def _converted_csv_dir():
 
 
 def extract():
-    pd_csv = CyLSTM.merge_file_data(_converted_csv_dir())
-    CyLSTM.fit_trans(pd_csv)
+    pd_csv = Modeling.merge_file_data(_converted_csv_dir())
+    Modeling.fit_trans(pd_csv)
 
-    lstm = CyLSTM(100, 512)
-    feature = lstm.extract_feature(_converted_csv_dir())
+    model = make_predictor(100, 512)
+    feature = model.extract_feature(_converted_csv_dir())
     feature.to_csv(f"{_feature_dir()}/features.csv", index=False)
 
 
@@ -50,7 +50,7 @@ def split():
 
 
 def raw_split():
-    pd_csv = CyLSTM.merge_file_data(_converted_csv_dir())
+    pd_csv = Modeling.merge_file_data(_converted_csv_dir())
     np_data = pd_csv.to_numpy()[:, :toolConfig.STATUS_LEN]
 
     trans = Modeling.load_trans()
@@ -68,9 +68,9 @@ def raw_split():
 
 
 def train():
-    lstm = CyLSTM(100, 512)
+    model = make_predictor(100, 512)
     feature = pd.read_csv(f"{_feature_dir()}/features_train.csv")
-    lstm.train(feature, cuda=True)
+    model.train(feature, cuda=True)
 
 
 def main():

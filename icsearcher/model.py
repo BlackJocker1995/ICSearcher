@@ -133,6 +133,35 @@ class Modeling(object):
             pd_array = values if pd_array is None else pd.concat([pd_array, values])
         return pd_array
 
+    @classmethod
+    def merge_file_data(cls, dir):
+        """Concatenate all CSVs in *dir* into one DataFrame (TimeS dropped).
+
+        Model-agnostic: it only merges flight-log CSVs, so it lives on the
+        base class and is shared by every surrogate subclass.
+        """
+        file_list = sorted(f for f in os.listdir(dir) if f.endswith(".csv"))
+        col_name = pd.read_csv(f"{dir}/{file_list[0]}").columns
+        pd_csv = pd.DataFrame(columns=col_name)
+        for filename in tqdm(file_list):
+            pd_csv = pd.concat([pd_csv, pd.read_csv(f"{dir}/{filename}")])
+        return pd_csv.drop(["TimeS"], axis=1)
+
+    def data_split_3d(self, values):
+        """Split a 3-D (n_params, n_windows, cols) array into 3-D X / 2-D Y.
+
+        Model-agnostic pure reshape: the input/output widths come only from
+        config, so both LSTM and TCN share it. (Previously defined only on
+        CyLSTM, which broke fuzzing when MODEL_TYPE == 'tcn'.)
+        """
+        cfg = _config()
+        values = values.values if isinstance(values, pd.DataFrame) else values
+        X = values[:, :, :cfg.INPUT_DATA_LEN]
+        y = values[:, :, cfg.INPUT_DATA_LEN:-cfg.PARAM_LEN]
+        X = X.reshape((-1, cfg.INPUT_LEN, cfg.DATA_LEN))
+        Y = y.reshape((-1, cfg.OUTPUT_DATA_LEN))
+        return X, Y
+
     @abstractmethod
     def data_split(self, value):
         pass
@@ -336,24 +365,6 @@ class CyLSTM(Modeling):
         Y = Y.reshape((Y.shape[0], cfg.OUTPUT_DATA_LEN))
         return X, Y
 
-    def data_split_3d(self, values):
-        cfg = _config()
-        values = values.values if isinstance(values, pd.DataFrame) else values
-        X = values[:, :, :cfg.INPUT_DATA_LEN]
-        y = values[:, :, cfg.INPUT_DATA_LEN:-cfg.PARAM_LEN]
-        X = X.reshape((-1, cfg.INPUT_LEN, cfg.DATA_LEN))
-        Y = y.reshape((-1, cfg.OUTPUT_DATA_LEN))
-        return X, Y
-
-    @classmethod
-    def merge_file_data(cls, dir):
-        file_list = sorted(f for f in os.listdir(dir) if f.endswith(".csv"))
-        col_name = pd.read_csv(f"{dir}/{file_list[0]}").columns
-        pd_csv = pd.DataFrame(columns=col_name)
-        for filename in tqdm(file_list):
-            pd_csv = pd.concat([pd_csv, pd.read_csv(f"{dir}/{filename}")])
-        return pd_csv.drop(["TimeS"], axis=1)
-
 
 class CyTCN(Modeling):
     """TCN surrogate predictor (PyTorch).
@@ -371,21 +382,21 @@ class CyTCN(Modeling):
         output_len = _config().OUTPUT_DATA_LEN
 
         class _TCNNet(nn.Module):
-            def __init__(self_inner):
+            def __init__(self):
                 super().__init__()
-                self_inner.conv = nn.Sequential(
+                self.conv = nn.Sequential(
                     nn.Conv1d(n_features, 64, kernel_size=3, padding=1),
                     nn.ReLU(),
                     nn.Conv1d(64, 64, kernel_size=3, padding=1),
                     nn.ReLU(),
                 )
-                self_inner.fc = nn.Linear(64, output_len)
+                self.fc = nn.Linear(64, output_len)
 
             def forward(self, x):
                 # x: (batch, seq, features) -> Conv1d wants (batch, features, seq)
-                out = self_inner.conv(x.transpose(1, 2))
+                out = self.conv(x.transpose(1, 2))
                 out = out[:, :, -1]   # last timestep
-                return self_inner.fc(out)
+                return self.fc(out)
 
         return _TCNNet()
 
@@ -400,5 +411,26 @@ class CyTCN(Modeling):
         y = y.reshape((y.shape[0], cfg.OUTPUT_LEN, -1))
         Y = y[:, :, :-cfg.PARAM_LEN].reshape((y.shape[0], cfg.OUTPUT_DATA_LEN))
         X = X.reshape((X.shape[0], cfg.INPUT_LEN, cfg.DATA_LEN))
-        Y = Y.reshape((Y.shape[0], 1, cfg.OUTPUT_DATA_LEN))
+        # Y is 2-D to match the network's forward() output (batch, OUTPUT_DATA_LEN).
+        # The legacy 3-D reshape (N, 1, O) made MSELoss broadcast against the
+        # 2-D predictions, silently breaking TCN training; aligned with CyLSTM.
+        Y = Y.reshape((Y.shape[0], cfg.OUTPUT_DATA_LEN))
         return X, Y
+
+
+def make_predictor(epochs: int, batch_size: int, debug: bool = False) -> Modeling:
+    """Return the surrogate selected by ``config.MODEL_TYPE``.
+
+    Reads ``MODEL_TYPE`` through the lazy ``_config()`` accessor so the
+    per-test monkeypatch of ``icsearcher.config.toolConfig`` is honoured.
+    Default ``'lstm'`` preserves the historical behaviour.
+    """
+    model_type = _config().MODEL_TYPE
+    if model_type == "tcn":
+        return CyTCN(epochs, batch_size, debug)
+    if model_type == "lstm":
+        return CyLSTM(epochs, batch_size, debug)
+    raise ValueError(
+        f"Unknown MODEL_TYPE {model_type!r}; expected 'lstm' or 'tcn'. "
+        "Set model.type in config.yaml or the ICSEARCHER_MODEL_TYPE env var."
+    )

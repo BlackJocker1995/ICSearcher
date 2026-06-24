@@ -49,6 +49,11 @@ The surrogate model is a PyTorch LSTM; the GA engine is
 [pymoo](https://pymoo.org) (differential evolution for fuzzing, NSGA-II for
 range derivation, with built-in GD/IGD/HV/Spacing indicators).
 
+> **Surrogate choice.** The model type is `lstm` by default; set `model.type:
+> tcn` in `data/config.yaml` (or the `ICSEARCHER_MODEL_TYPE` env var) to train
+> and fuzz with the TCN surrogate instead. Each type writes its own artifact
+> (`lstm.pt` / `tcn.pt`) under `model/{MODE}/{input_len}_{output_len}/`.
+
 ---
 
 ## Repository layout
@@ -76,7 +81,7 @@ pyproject.toml            Project manifest (deps + icsearcher-* console entry po
 
 ## Requirements
 
-- **OS:** Ubuntu 20.04 or 22.04 (recommended). The simulators and their build
+- **OS:** Ubuntu 20.04+. The simulators and their build
   toolchains are Linux-centric.
 - **Python:** 3.9 – 3.11. Python 3.12 has known compatibility issues with
   ArduPilot's build system (the `imp` module was removed) and is not supported.
@@ -85,9 +90,7 @@ pyproject.toml            Project manifest (deps + icsearcher-* console entry po
 
 ### Prerequisites (system packages — install once, needs sudo)
 
-Before anything else, install the system build tools. This is the **only** step
-that needs `sudo`; the project scripts themselves run as your normal user (the
-firmware's own setup scripts, invoked later, will prompt for sudo internally).
+Before anything else, install the system build tools. 
 
 ```bash
 sudo apt-get update
@@ -98,10 +101,6 @@ sudo apt-get install -y --no-install-recommends \
     ccache \
     wget curl
 ```
-
-That's the minimal set to clone repos, run the firmware setup scripts, and build
-any Python source wheels. The firmware installers pull in the rest (cmake,
-ninja, simulator libraries, …) themselves.
 
 ---
 
@@ -132,10 +131,6 @@ surrogate model backend (PyTorch), and dev tools (pytest). **PX4-only users
 can stop at `uv sync`.** ArduPilot users add the `ardupilot` group (MAVProxy,
 dronekit-sitl, etc.) so `sim_vehicle.py` runs inside the project venv — no
 separate system `pip install` needed.
-
-> **Optional TCN backend.** A TCN surrogate (`CyTCN`) is available but no longer
-> needs an external package — it ships as a built-in `Conv1d` head in
-> `icsearcher/model.py`.
 
 ### Step 2 — Provision the simulators
 
@@ -233,7 +228,7 @@ uv run icsearcher-convert
 uv run icsearcher-train extract      # build features + fit the scaler
 uv run icsearcher-train split        # split features into train/test
 uv run icsearcher-train raw_split    # carve held-out raw test segments
-uv run icsearcher-train train        # train the LSTM surrogate
+uv run icsearcher-train train        # train the surrogate (lstm or tcn per model.type)
 
 # Stage 3 — surrogate-guided fuzzing
 uv run icsearcher-fuzz

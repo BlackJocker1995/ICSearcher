@@ -229,6 +229,16 @@ class ToolConfig:
         self.__dict__["MORSE_PATH"] = paths.get('morse', "/home/rain/ardupilot/libraries/SITL/examples/Morse/quadcopter.py")
 
         model = self._get_yaml_value('model', default={}) or {}
+        # Surrogate type: lstm | tcn. Priority: env var > yaml > 'lstm' default,
+        # mirroring the mode/instances override pattern.
+        env_model_type = os.environ.get("ICSEARCHER_MODEL_TYPE")
+        model_type = (env_model_type or model.get('type', 'lstm')).lower()
+        if model_type not in ("lstm", "tcn"):
+            raise ValueError(
+                f"Invalid model.type {model_type!r}; expected 'lstm' or 'tcn'. "
+                "Set model.type in config.yaml or the ICSEARCHER_MODEL_TYPE env var."
+            )
+        self.__dict__["MODEL_TYPE"] = model_type
         self.__dict__["CLUSTER_CHOICE_NUM"] = self._get_yaml_value('cluster_choice_num', default=10)
         self.__dict__["INPUT_LEN"] = model.get('input_len', 4)
         self.__dict__["OUTPUT_LEN"] = model.get('output_len', 1)

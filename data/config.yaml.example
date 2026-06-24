@@ -33,6 +33,7 @@ paths:
 
 # Model Settings
 model:
+  type: lstm           # lstm | tcn — 选哪个代理模型;覆盖用 ICSEARCHER_MODEL_TYPE
   input_len: 4
   output_len: 1
   segment_len: 14
