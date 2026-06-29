@@ -281,22 +281,6 @@ works too (e.g. `uv run python -m pipelines train extract`).
 
 ---
 
-## Testing
-
-Pure-function unit tests that do **not** require a live SITL simulator:
-
-```bash
-uv run pytest
-```
-
-Coverage spans the config loader, parameter scaling, the pymoo problem shapes,
-the PyTorch model forward/train path, and the decomposed anomaly detector
-(geometry + classification + timeout). Tests requiring heavy backends (pymoo,
-torch, pymavlink) self-skip when the backend is absent, so the suite is always
-green in any environment.
-
----
-
 ## Notes & troubleshooting
 
 **No GUI needed for unattended fuzzing.** PX4 SITL launches with `HEADLESS=1`
@@ -304,14 +288,6 @@ green in any environment.
 detector reads flight telemetry over MAVLink, not the 3D view. To see the
 JMavSim window for debugging, remove `HEADLESS=1` from the PX4 branch of
 `icsearcher/sim.py:start_sitl`.
-
-**The lockfile is not committed.** Generate it locally with `uv lock`
-(the TensorFlow-free dependency graph resolves in a couple of seconds).
-Commit `uv.lock` if you want reproducible installs across machines.
-
-**Retrain after upgrading past stage 4.** The surrogate artifact changed from
-`lstm.h5` (Keras) to `lstm.pt` (PyTorch state-dict). Old Keras models are not
-loadable — rerun `uv run icsearcher-train train`.
 
 **Multi-instance (parallel) collect & validate.** Both SITL-bound stages run
 N simulator instances concurrently — each on its own UDP port (`14540 + i`) and
@@ -331,8 +307,3 @@ ICSEARCHER_INSTANCES=4 uv run icsearcher-validate validate
 runs a single instance bound to instance `N` (UDP port `14540+N`). Per-instance
 ArduPilot state is isolated under `ARDUPILOT_LOG_PATH/instance_{i}/`, PX4 under
 the build tree's `instance_{i}/`, so concurrent instances never collide.
-
-**Logging.** Every module uses [loguru](https://github.com/Delgan/loguru)
-through `icsearcher/logging_config.py`. `setup_logging(debug=...)` configures
-one unified stderr sink and bridges any remaining stdlib `logging` calls into
-it, so nothing is silenced.
